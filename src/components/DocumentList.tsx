@@ -30,9 +30,11 @@ interface DocumentListProps {
   users: any[];
   departments: any[];
   documentTypes?: any[];
+  isAdmin?: boolean;
   onOpenDocument: (id: string) => void;
   onEditDocument: (id: string) => void;
   onDeleteDraft: (id: string) => void;
+  onDeleteDocument?: (id: string) => void;
   onRefresh: () => void;
 }
 
@@ -41,9 +43,11 @@ export default function DocumentList({
   users,
   departments,
   documentTypes = [],
+  isAdmin = false,
   onOpenDocument,
   onEditDocument,
   onDeleteDraft,
+  onDeleteDocument,
   onRefresh
 }: DocumentListProps) {
   // Filters State
@@ -57,6 +61,7 @@ export default function DocumentList({
   const [executor, setExecutor] = useState<string>("ALL");
   const [docNumber, setDocNumber] = useState("");
   const [regNumber, setRegNumber] = useState("");
+  const [entryNumberFilter, setEntryNumberFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
@@ -87,6 +92,7 @@ export default function DocumentList({
 
     if (docNumber && !doc.documentNumber?.toLowerCase().includes(docNumber.toLowerCase())) return false;
     if (regNumber && !doc.registrationNumber?.toLowerCase().includes(regNumber.toLowerCase())) return false;
+    if (entryNumberFilter && !doc.entryNumber?.toLowerCase().includes(entryNumberFilter.toLowerCase())) return false;
 
     if (dateFrom && doc.createdAt < dateFrom) return false;
     if (dateTo && doc.createdAt > dateTo) return false;
@@ -97,6 +103,8 @@ export default function DocumentList({
         doc.subject.toLowerCase().includes(q) ||
         doc.description.toLowerCase().includes(q) ||
         doc.documentNumber?.toLowerCase().includes(q) ||
+        doc.registrationNumber?.toLowerCase().includes(q) ||
+        doc.entryNumber?.toLowerCase().includes(q) ||
         doc.sender?.toLowerCase().includes(q) ||
         doc.recipient?.toLowerCase().includes(q)
       );
@@ -164,7 +172,7 @@ export default function DocumentList({
     }
 
     return (
-      <span className={`px-2.5 py-1 text-xs font-sans font-medium rounded-full border ${style}`}>
+      <span className={`inline-block max-w-[120px] text-center leading-tight px-2.5 py-1 text-[11px] font-sans font-medium rounded-lg border whitespace-normal break-words ${style}`}>
         {label}
       </span>
     );
@@ -211,7 +219,7 @@ export default function DocumentList({
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
             type="text"
-            placeholder="ძებნა სათაურით, შინაარსით ან ნომრით..."
+            placeholder="ძებნა სათაურით, შინაარსით, შიდა ან დოკ. ნომრით..."
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl text-sm font-sans focus:outline-hidden focus:ring-2 focus:ring-slate-900 transition"
@@ -351,6 +359,18 @@ export default function DocumentList({
               className="w-full border border-slate-200 rounded-lg p-2 text-xs font-sans focus:outline-hidden"
             />
           </div>
+
+          {/* Internal (Entry) Number */}
+          <div>
+            <label className="text-xs font-semibold text-slate-500 block mb-1.5 font-sans">შიდა ნომერი</label>
+            <input
+              type="text"
+              placeholder="000123"
+              value={entryNumberFilter}
+              onChange={e => setEntryNumberFilter(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg p-2 text-xs font-sans font-mono focus:outline-hidden"
+            />
+          </div>
         </div>
       )}
 
@@ -410,7 +430,12 @@ export default function DocumentList({
                     </td>
 
                     {/* Status badge */}
-	                    <td className="p-3 text-xs font-semibold text-center">{GEORGIAN_CATEGORIES[doc.category] || doc.category}<br />{renderStatusBadge(doc.status)}</td>
+	                    <td className="p-3 text-xs font-semibold">
+	                      <div className="flex flex-col items-center gap-1.5">
+	                        <span className="text-slate-700">{GEORGIAN_CATEGORIES[doc.category] || doc.category}</span>
+	                        {renderStatusBadge(doc.status)}
+	                      </div>
+	                    </td>
 
                     {/* Category */}
 	                    <td className="p-3 font-sans text-xs font-semibold text-slate-800">
@@ -456,22 +481,31 @@ export default function DocumentList({
                           <Eye className="w-4 h-4" />
                         </button>
                         {doc.status === DocumentStatus.DRAFT && (
-                          <>
-                            <button
-                              onClick={() => onEditDocument(doc.id)}
-                              className="p-1.5 bg-slate-50 hover:bg-blue-100 text-blue-600 rounded-lg transition"
-                              title="რედაქტირება"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => onDeleteDraft(doc.id)}
-                              className="p-1.5 bg-slate-50 hover:bg-rose-100 text-rose-600 rounded-lg transition"
-                              title="წაშლა"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </>
+                          <button
+                            onClick={() => onEditDocument(doc.id)}
+                            className="p-1.5 bg-slate-50 hover:bg-blue-100 text-blue-600 rounded-lg transition"
+                            title="რედაქტირება"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                        )}
+                        {doc.status === DocumentStatus.DRAFT && !isAdmin && (
+                          <button
+                            onClick={() => onDeleteDraft(doc.id)}
+                            className="p-1.5 bg-slate-50 hover:bg-rose-100 text-rose-600 rounded-lg transition"
+                            title="პროექტის წაშლა"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                        {isAdmin && onDeleteDocument && (
+                          <button
+                            onClick={() => onDeleteDocument(doc.id)}
+                            className="p-1.5 bg-slate-50 hover:bg-rose-100 text-rose-600 rounded-lg transition"
+                            title="დოკუმენტის სრულად წაშლა (ადმინი)"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         )}
                       </div>
                     </td>
