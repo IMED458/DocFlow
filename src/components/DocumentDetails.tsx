@@ -46,6 +46,7 @@ interface DocumentDetailsProps {
   documentTypes?: Array<{ id: string; label: string; isActive?: boolean }>;
   onBack: () => void;
   onRefresh: () => void;
+  onOpenDocument?: (id: string) => void;
 }
 
 const SYNC_EVENT_NAME = "docflow:data-changed";
@@ -104,7 +105,8 @@ export default function DocumentDetails({
   currentUser,
   documentTypes = [],
   onBack,
-  onRefresh
+  onRefresh,
+  onOpenDocument
 }: DocumentDetailsProps) {
   const [viewMode, setViewMode] = useState<"edit" | "print">("edit");
   const [doc, setDoc] = useState<Document | null>(null);
@@ -1822,12 +1824,17 @@ export default function DocumentDetails({
                     {basisLinks.map(link => {
                       const bdoc = allDocs.find(d => d.id === link.basisDocumentId);
                       return (
-                        <div key={link.id} className="p-2 bg-slate-50 border rounded-lg flex items-center justify-between gap-2">
-                          <span className="truncate font-semibold text-slate-700">
-                            {bdoc
-                              ? `${bdoc.documentNumber || "შიდა № " + (bdoc.entryNumber || "—")} — ${bdoc.subject}`
-                              : `ბმა: ${link.basisDocumentId.substring(0, 8)}...`}
-                          </span>
+	                        <div key={link.id} className="p-2 bg-slate-50 border rounded-lg flex items-center justify-between gap-2">
+	                          <button
+	                            type="button"
+	                            onClick={() => onOpenDocument?.(link.basisDocumentId)}
+	                            className="truncate font-semibold text-slate-700 hover:text-indigo-700 hover:underline text-left min-w-0"
+	                            title="საფუძვლის დოკუმენტის გახსნა"
+	                          >
+	                            {bdoc
+	                              ? `${bdoc.documentNumber || "შიდა № " + (bdoc.entryNumber || "—")} — ${bdoc.subject}`
+	                              : `ბმა: ${link.basisDocumentId.substring(0, 8)}...`}
+	                          </button>
                           {doc.status !== DocumentStatus.SIGNED && (
                             <button
                               onClick={async () => {

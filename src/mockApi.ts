@@ -50,6 +50,7 @@ const ALL_COLLECTIONS = [
 ];
 
 const FIRESTORE_LOAD_TIMEOUT_MS = 4500;
+const FIRESTORE_REFRESH_INTERVAL_MS = 5000;
 const FIRESTORE_BATCH_SIZE = 400;
 const FIRESTORE_DOCUMENTS_BASE =
   `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents`;
@@ -66,6 +67,7 @@ function shouldUseMockApi() {
 
 let cache: Db | null = null;
 let loadPromise: Promise<Db> | null = null;
+let lastRemoteLoadAt = 0;
 // ბოლოს დასინქრონებული მდგომარეობა — id → JSON (მინიმალური ჩაწერებისთვის).
 const synced: Record<string, Map<string, string>> = {};
 
@@ -235,14 +237,23 @@ async function loadFromFirestore(): Promise<Db> {
   return result;
 }
 
-async function ensureLoaded(): Promise<Db> {
-  if (cache) return cache;
+async function ensureLoaded(refresh = false): Promise<Db> {
+  const refreshIsStale = refresh && cache && Date.now() - lastRemoteLoadAt >= FIRESTORE_REFRESH_INTERVAL_MS;
+  if (cache && !refreshIsStale) return cache;
   if (!loadPromise) {
     loadPromise = withTimeout(loadFromFirestore(), FIRESTORE_LOAD_TIMEOUT_MS)
-      .then((db) => { cache = db; return db; })
+      .then((db) => {
+        cache = db;
+        lastRemoteLoadAt = Date.now();
+        return db;
+      })
       .catch((e) => {
+        if (cache) return cache;
         cache = fallbackDb(e);
         return cache;
+      })
+      .finally(() => {
+        loadPromise = null;
       });
   }
   return loadPromise;
@@ -359,8 +370,17 @@ function getCurrentUserId(request: Request) {
   return auth.replace("Bearer jwt-mock-token-", "") || "usr-admin";
 }
 
-function isChancelleryUser(user: any) {
-  return user?.departmentId === "dep-chanc" || String(user?.positionName || "").includes("კანცელარ");
+function isChancelleryUser(user: any, db?: Db) {
+  const department = db?.departments?.find((item: any) => item.id === user?.departmentId);
+  const text = [
+    user?.departmentId,
+    user?.departmentName,
+    department?.name,
+    user?.positionName,
+    user?.role,
+    user?.username,
+  ].filter(Boolean).join(" ").toLowerCase();
+  return user?.departmentId === "dep-chanc" || text.includes("კანცელარ") || text.includes("chancellery");
 }
 
 function documentAuthorIds(doc: any) {
@@ -371,6 +391,30 @@ function documentAuthorIds(doc: any) {
 
 function visaActionsFor(db: Db, docId: string, role?: string) {
   return (db.visa_actions || []).filter((item: any) => item.documentId === docId && (!role || item.role === role));
+}
+
+function readStateFor(db: Db, docId: string, userId: string) {
+  return (db.document_addressees || []).find((item: any) => item.documentId === docId && item.userId === userId)?.status || "UNREAD";
+}
+
+function markDocumentRead(db: Db, docId: string, userId: string) {
+  db.document_addressees = db.document_addressees || [];
+  const now = new Date().toISOString();
+  const existing = db.document_addressees.find((item: any) => item.documentId === docId && item.userId === userId);
+  if (existing) {
+    existing.status = "READ";
+    existing.readAt = now;
+    return existing;
+  }
+  const created = {
+    id: nextId("addr"),
+    documentId: docId,
+    userId,
+    status: "READ",
+    readAt: now,
+  };
+  db.document_addressees.push(created);
+  return created;
 }
 
 function hasCompletedVisa(db: Db, docId: string) {
@@ -387,7 +431,7 @@ function ensureChancelleryRecipients(db: Db, doc: any) {
   db.document_recipients = db.document_recipients || [];
   db.notifications = db.notifications || [];
   const now = new Date().toISOString();
-  const chancelleryUsers = (db.users || []).filter(isChancelleryUser);
+  const chancelleryUsers = (db.users || []).filter((user: any) => isChancelleryUser(user, db));
   const targetUsers = chancelleryUsers.length ? chancelleryUsers : [{ id: "dep-chanc", firstName: "კანცელარია", lastName: "" }];
 
   targetUsers.forEach((user: any) => {
@@ -426,14 +470,12 @@ function canUserSeeDocument(db: Db, doc: any, userId: string) {
   const user = (db.users || []).find((item: any) => item.id === userId);
   if (!user) return false;
   if (user.role === "ADMIN") return true;
+  if (isChancelleryUser(user, db)) return true;
   if (documentAuthorIds(doc).has(userId)) return true;
   if (visaActionsFor(db, doc.id).some((item: any) => item.userId === userId)) return true;
   if ((db.document_recipients || []).some((recipient: any) =>
     recipient.documentId === doc.id && (recipient.recipientUserId === userId || recipient.userId === userId)
   )) return true;
-  if (isChancelleryUser(user)) {
-    return ["SIGNED", "COMPLETED", "SENT", "RECEIVED", "READ", "RESOLUTION_ASSIGNED", "IN_PROGRESS"].includes(doc.status);
-  }
   return false;
 }
 
@@ -455,6 +497,7 @@ function filterDocuments(db: Db, documents: any[], url: URL, userId: string) {
     return {
       ...doc,
       quickAction: pendingVisa ? "VISA" : pendingSign ? "SIGN" : undefined,
+      readState: readStateFor(db, doc.id, userId),
     };
   });
 }
@@ -470,7 +513,7 @@ async function handleApi(request: Request, init?: RequestInit) {
   const url = new URL(request.url);
   const parts = url.pathname.replace(/^\/api\/?/, "").split("/").filter(Boolean);
   const method = (init?.method || request.method || "GET").toUpperCase();
-  const db = await ensureLoaded();
+  const db = await ensureLoaded(method === "GET");
   const userId = getCurrentUserId(request);
 
   if (parts[0] === "auth" && parts[1] === "login" && method === "POST") {
@@ -623,6 +666,11 @@ async function handleApi(request: Request, init?: RequestInit) {
       return json(created, { status: 201 });
     }
     if (!doc) return json({ message: "დოკუმენტი ვერ მოიძებნა" }, { status: 404 });
+    if (parts[2] === "read" && method === "POST") {
+      const state = markDocumentRead(db, docId, userId);
+      await writeDb(db);
+      return json(state);
+    }
     if (method === "DELETE" && parts.length === 2) {
       const requester = db.users.find((u) => u.id === userId);
       if (!requester || requester.role !== "ADMIN") {

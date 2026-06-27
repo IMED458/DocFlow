@@ -42,7 +42,7 @@ import AdminPanel from "./components/AdminPanel.js";
 
 const SESSION_USER_KEY = "docflow-georgia-current-user";
 const SYNC_EVENT_NAME = "docflow:data-changed";
-const LIST_SYNC_INTERVAL_MS = 15000;
+const LIST_SYNC_INTERVAL_MS = 5000;
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -322,6 +322,20 @@ export default function App() {
     }
   };
 
+  const handleOpenDocument = async (id: string) => {
+    setSelectedDocId(id);
+    if (!currentUser) return;
+    try {
+      await fetch(`/api/documents/${id}/read`, {
+        method: "POST",
+        headers: { "Authorization": `Bearer jwt-mock-token-${currentUser.id}` }
+      });
+      await loadInitialData(currentUser);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   // საქაღალდის ფილტრის ერთიანი ლოგიკა — გამოიყენება როგორც დათვლისთვის,
   // ისე სიის გასაფილტრად, რომ რაოდენობა ყოველთვის ემთხვეოდეს ნაჩვენებ დოკუმენტებს.
   const isArchivedDoc = (d: Document) =>
@@ -334,6 +348,8 @@ export default function App() {
     switch (filter) {
       case "ALL": return true;
       case "VISA_FOLDER": return d.status === DocumentStatus.ON_VISA || d.status === DocumentStatus.SENT_TO_VISA;
+      case "UNREAD_FOLDER": return (d as Document & { readState?: string }).readState !== "READ";
+      case "READ_FOLDER": return (d as Document & { readState?: string }).readState === "READ";
       case "COMPLETED_FOLDER": return d.status === DocumentStatus.SIGNED || d.status === DocumentStatus.COMPLETED;
       case "ARCHIVE_FOLDER": return isArchivedDoc(d);
       case DocumentStatus.SENT_TO_SIGN: return d.status === DocumentStatus.SENT_TO_SIGN;
@@ -346,8 +362,8 @@ export default function App() {
   const draftCount = folderCount(DocumentStatus.DRAFT);
   const onVisaCount = folderCount("VISA_FOLDER");
   const signingCount = folderCount(DocumentStatus.SENT_TO_SIGN);
-  const unreadCount = folderCount(DocumentStatus.RECEIVED);
-  const readCount = folderCount(DocumentStatus.READ);
+  const unreadCount = folderCount("UNREAD_FOLDER");
+  const readCount = folderCount("READ_FOLDER");
   const completedCount = folderCount("COMPLETED_FOLDER");
   const archivedCount = folderCount("ARCHIVE_FOLDER");
 
@@ -519,8 +535,8 @@ export default function App() {
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-4 block">საქაღალდეები</span>
             <div className="space-y-1 text-xs">
 	              {[
-	                { label: "წაუკითხავი", filter: DocumentStatus.RECEIVED, count: unreadCount, tone: "bg-sky-900/40 text-sky-300" },
-	                { label: "წაკითხული", filter: DocumentStatus.READ, count: readCount, tone: "bg-slate-800 text-slate-300" },
+		                { label: "წაუკითხავი", filter: "UNREAD_FOLDER", count: unreadCount, tone: "bg-sky-900/40 text-sky-300" },
+		                { label: "წაკითხული", filter: "READ_FOLDER", count: readCount, tone: "bg-slate-800 text-slate-300" },
 	                { label: "ხელმოსაწერი", filter: DocumentStatus.SENT_TO_SIGN, count: signingCount, tone: "bg-indigo-950/40 text-indigo-300" },
 	                { label: "დასრულებული", filter: "COMPLETED_FOLDER", count: completedCount, tone: "bg-emerald-950/40 text-emerald-400" },
 	                { label: "არქივი", filter: "ARCHIVE_FOLDER", count: archivedCount, tone: "bg-violet-950/40 text-violet-300" }
@@ -663,6 +679,7 @@ export default function App() {
               documentTypes={documentTypes}
               onBack={() => setSelectedDocId(null)}
               onRefresh={() => loadInitialData(currentUser)}
+              onOpenDocument={handleOpenDocument}
             />
           ) : (
             <>
@@ -697,9 +714,9 @@ export default function App() {
 	                  departments={departments}
 	                  documentTypes={documentTypes}
                   isAdmin={currentUser.role === UserRole.ADMIN}
-                  onOpenDocument={(id) => setSelectedDocId(id)}
+                  onOpenDocument={handleOpenDocument}
                   onEditDocument={(id) => {
-                    setSelectedDocId(id);
+                    handleOpenDocument(id);
                   }}
                   onDeleteDraft={handleDeleteDraft}
                   onDeleteDocument={handleDeleteDocument}

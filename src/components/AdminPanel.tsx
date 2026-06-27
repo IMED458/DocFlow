@@ -72,6 +72,15 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
   const [newPositionDepartmentId, setNewPositionDepartmentId] = useState("");
   const [newDepartmentName, setNewDepartmentName] = useState("");
   const [newDocumentTypeLabel, setNewDocumentTypeLabel] = useState("");
+  const [newRule, setNewRule] = useState<Partial<NumberingRule>>({
+    prefix: "DOC",
+    separator: "-",
+    yearFormat: "YYYY",
+    sequenceLength: 6,
+    resetYearly: true,
+    documentType: undefined,
+    category: undefined,
+  });
   const [editingRule, setEditingRule] = useState<NumberingRule | null>(null);
 
   // Form Inputs - Templates list
@@ -307,6 +316,59 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
     }
   };
 
+  const handleCreateNumberingRule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newRule.prefix?.trim()) return;
+    try {
+      const res = await fetch("/api/admin/numbering-rules", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer jwt-mock-token-${currentUser.id}`
+        },
+        body: JSON.stringify({
+          prefix: newRule.prefix.trim(),
+          separator: newRule.separator || "-",
+          yearFormat: newRule.yearFormat || "YYYY",
+          sequenceLength: Number(newRule.sequenceLength || 6),
+          resetYearly: newRule.resetYearly !== false,
+          category: newRule.category || undefined,
+          documentType: newRule.documentType || undefined,
+        })
+      });
+      if (res.ok) {
+        setNewRule({
+          prefix: "DOC",
+          separator: "-",
+          yearFormat: "YYYY",
+          sequenceLength: 6,
+          resetYearly: true,
+          documentType: undefined,
+          category: undefined,
+        });
+        loadAdminData();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleDeleteNumberingRule = async (id: string) => {
+    if (!window.confirm("ნამდვილად გსურთ ნუმერაციის წესის წაშლა?")) return;
+    try {
+      const res = await fetch(`/api/admin/numbering-rules/${id}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer jwt-mock-token-${currentUser.id}` }
+      });
+      if (res.ok) {
+        if (editingRule?.id === id) setEditingRule(null);
+        loadAdminData();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const handleCreateDocumentType = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDocumentTypeLabel.trim()) return;
@@ -497,6 +559,10 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
       console.error(err);
     }
   };
+
+  const documentTypeOptions = documentTypes.length
+    ? documentTypes
+    : Object.entries(GEORGIAN_DOCUMENT_TYPES).map(([id, label]) => ({ id, label, isActive: true }));
 
   return (
     <div className="space-y-6">
@@ -1065,7 +1131,7 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
 	                თანამშრომელი დოკუმენტის შექმნისას ვალდებულია აირჩიოს ტიპი. ამ ტიპებით ხდება ძებნა, ფილტრაცია და ნუმერაციის წესზე მიბმა.
 	              </p>
 	              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-	                {(documentTypes.length ? documentTypes : Object.entries(GEORGIAN_DOCUMENT_TYPES).map(([id, label]) => ({ id, label, isActive: true }))).map(typeItem => (
+		                {documentTypeOptions.map(typeItem => (
 	                  <div key={typeItem.id} className="border border-slate-100 rounded-xl p-4 bg-slate-50">
 	                    <div className="font-bold text-sm text-slate-800">{typeItem.label}</div>
 	                    <div className="text-xxs text-slate-400 mt-1 font-mono">{typeItem.id}</div>
@@ -1330,13 +1396,73 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
           {/* Tab 4: Numbering Rules */}
           {adminTab === "numbering" && (
             <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-xs space-y-6">
-              <h3 className="text-base font-bold text-slate-800 font-display border-b border-slate-100 pb-3">
-                ნუმერაციის წესები
-              </h3>
+	              <h3 className="text-base font-bold text-slate-800 font-display border-b border-slate-100 pb-3">
+	                ნუმერაციის წესები
+	              </h3>
 
-	              <div className="space-y-4">
-	                {editingRule && (
-	                  <form onSubmit={handleUpdateNumberingRule} className="p-4 bg-indigo-50 border border-indigo-100 rounded-xl grid grid-cols-1 md:grid-cols-3 gap-3">
+		              <div className="space-y-4">
+		                <form onSubmit={handleCreateNumberingRule} className="p-4 bg-slate-50 border border-slate-200 rounded-xl grid grid-cols-1 md:grid-cols-3 gap-3">
+		                  <input
+		                    value={newRule.prefix || ""}
+		                    onChange={e => setNewRule({ ...newRule, prefix: e.target.value })}
+		                    className="border border-slate-200 rounded-lg p-2 text-xs"
+		                    placeholder="პრეფიქსი, მაგ: MES"
+		                  />
+		                  <input
+		                    value={newRule.separator || ""}
+		                    onChange={e => setNewRule({ ...newRule, separator: e.target.value })}
+		                    className="border border-slate-200 rounded-lg p-2 text-xs"
+		                    placeholder="გამყოფი, მაგ: - ან /"
+		                  />
+		                  <input
+		                    type="number"
+		                    min={1}
+		                    max={12}
+		                    value={newRule.sequenceLength || 6}
+		                    onChange={e => setNewRule({ ...newRule, sequenceLength: Number(e.target.value) })}
+		                    className="border border-slate-200 rounded-lg p-2 text-xs"
+		                    placeholder="ნომრის სიგრძე"
+		                  />
+		                  <select
+		                    value={newRule.yearFormat || "YYYY"}
+		                    onChange={e => setNewRule({ ...newRule, yearFormat: e.target.value as "YYYY" | "YY" | "NONE" })}
+		                    className="border border-slate-200 rounded-lg p-2 text-xs bg-white"
+		                  >
+		                    <option value="YYYY">YYYY</option>
+		                    <option value="YY">YY</option>
+		                    <option value="NONE">წლის გარეშე</option>
+		                  </select>
+		                  <select
+		                    value={newRule.category || ""}
+		                    onChange={e => setNewRule({ ...newRule, category: e.target.value as any })}
+		                    className="border border-slate-200 rounded-lg p-2 text-xs bg-white"
+		                  >
+		                    <option value="">ყველა კატეგორია</option>
+		                    {Object.entries(GEORGIAN_CATEGORIES).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+		                  </select>
+		                  <select
+		                    value={newRule.documentType || ""}
+		                    onChange={e => setNewRule({ ...newRule, documentType: e.target.value as DocumentType })}
+		                    className="border border-slate-200 rounded-lg p-2 text-xs bg-white"
+		                  >
+		                    <option value="">ყველა ტიპი</option>
+		                    {documentTypeOptions.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+		                  </select>
+		                  <label className="md:col-span-2 flex items-center gap-2 text-xs font-semibold text-slate-600">
+		                    <input
+		                      type="checkbox"
+		                      checked={newRule.resetYearly !== false}
+		                      onChange={e => setNewRule({ ...newRule, resetYearly: e.target.checked })}
+		                    />
+		                    წლიურად განულება
+		                  </label>
+		                  <button type="submit" className="bg-slate-900 hover:bg-slate-800 text-white rounded-lg px-5 py-2 text-xs font-sans font-semibold flex items-center justify-center gap-1 transition">
+		                    <Plus className="w-4 h-4" />
+		                    წესის დამატება
+		                  </button>
+		                </form>
+		                {editingRule && (
+		                  <form onSubmit={handleUpdateNumberingRule} className="p-4 bg-indigo-50 border border-indigo-100 rounded-xl grid grid-cols-1 md:grid-cols-3 gap-3">
 	                    <input value={editingRule.prefix} onChange={e => setEditingRule({ ...editingRule, prefix: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-xs" placeholder="პრეფიქსი" />
 	                    <input value={editingRule.separator} onChange={e => setEditingRule({ ...editingRule, separator: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-xs" placeholder="გამყოფი" />
 	                    <input type="number" value={editingRule.sequenceLength} onChange={e => setEditingRule({ ...editingRule, sequenceLength: Number(e.target.value) })} className="border border-slate-200 rounded-lg p-2 text-xs" placeholder="სიგრძე" />
@@ -1349,10 +1475,10 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
 	                      <option value="">ყველა კატეგორია</option>
 	                      {Object.entries(GEORGIAN_CATEGORIES).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
 	                    </select>
-	                    <select value={editingRule.documentType || ""} onChange={e => setEditingRule({ ...editingRule, documentType: e.target.value as DocumentType })} className="border border-slate-200 rounded-lg p-2 text-xs bg-white">
-	                      <option value="">ყველა ტიპი</option>
-	                      {Object.entries(GEORGIAN_DOCUMENT_TYPES).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-	                    </select>
+		                    <select value={editingRule.documentType || ""} onChange={e => setEditingRule({ ...editingRule, documentType: e.target.value as DocumentType })} className="border border-slate-200 rounded-lg p-2 text-xs bg-white">
+		                      <option value="">ყველა ტიპი</option>
+		                      {documentTypeOptions.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+		                    </select>
 	                    <div className="md:col-span-3 flex justify-end gap-2">
 	                      <button type="button" onClick={() => setEditingRule(null)} className="px-4 py-2 text-xs font-bold rounded-lg border border-slate-200 bg-white">გაუქმება</button>
 	                      <button type="submit" className="px-4 py-2 text-xs font-bold rounded-lg bg-slate-900 text-white">შენახვა</button>
@@ -1367,10 +1493,15 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
 	                        განმცალკევებელი: "{rule.separator}" | სიგრძე: {rule.sequenceLength} | ტიპი: {rule.documentType ? GEORGIAN_DOCUMENT_TYPES[rule.documentType] : "ყველა"}
 	                      </p>
 	                    </div>
-	                    <button onClick={() => setEditingRule(rule)} className="text-xxs font-sans text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1 rounded-lg font-bold">
-	                      რედაქტირება
-	                    </button>
-	                  </div>
+		                    <div className="flex items-center gap-2">
+		                      <button onClick={() => setEditingRule(rule)} className="text-xxs font-sans text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1 rounded-lg font-bold">
+		                        რედაქტირება
+		                      </button>
+		                      <button onClick={() => handleDeleteNumberingRule(rule.id)} className="text-xxs font-sans text-rose-700 bg-rose-50 border border-rose-200 px-3 py-1 rounded-lg font-bold">
+		                        წაშლა
+		                      </button>
+		                    </div>
+		                  </div>
 	                ))}
               </div>
             </div>
