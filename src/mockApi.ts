@@ -378,6 +378,11 @@ function hasCompletedVisa(db: Db, docId: string) {
   return visas.length > 0 && visas.every((item: any) => item.status === "APPROVED");
 }
 
+function canProceedToSignature(db: Db, docId: string) {
+  const visas = visaActionsFor(db, docId, "VISA");
+  return visas.length === 0 || visas.every((item: any) => item.status === "APPROVED");
+}
+
 function ensureChancelleryRecipients(db: Db, doc: any) {
   db.document_recipients = db.document_recipients || [];
   db.notifications = db.notifications || [];
@@ -744,9 +749,7 @@ async function handleApi(request: Request, init?: RequestInit) {
 	    if (method === "POST" && parts[2] === "visa" && parts[3] === "send") {
 	      const body = await readBody(init);
 	      const visaUsers = Array.from(new Set((body.visaUsers || []).filter(Boolean)));
-	      if (visaUsers.length === 0) {
-	        return json({ message: "ხელმოწერამდე აუცილებელია მინიმუმ ერთი ვიზირების მონაწილე." }, { status: 400 });
-	      }
+	      if (visaUsers.length === 0) return json({ message: "აირჩიეთ ვიზირების მონაწილე ან გაგზავნეთ პირდაპირ ხელმოსაწერად." }, { status: 400 });
 	      doc.status = "SENT_TO_VISA";
 	      doc.visaStatus = "PENDING";
 	      doc.signatureStatus = undefined;
@@ -797,8 +800,8 @@ async function handleApi(request: Request, init?: RequestInit) {
 	      return json(doc);
 	    }
 	    if (method === "POST" && parts[2] === "signature" && parts[3] === "request") {
-	      if (!hasCompletedVisa(db, docId)) {
-	        return json({ message: "ხელმოწერამდე დოკუმენტმა სრულად უნდა გაიაროს ვიზირება." }, { status: 409 });
+	      if (!canProceedToSignature(db, docId)) {
+	        return json({ message: "არჩეული ვიზირების მონაწილეების დადასტურებამდე ხელმოწერა ვერ დაიწყება." }, { status: 409 });
 	      }
 	      const targetSignerId = doc.authorId;
 	      doc.status = "SENT_TO_SIGN";
@@ -841,8 +844,8 @@ async function handleApi(request: Request, init?: RequestInit) {
 	      if (parts[2] === "sign") {
 	        const action = db.visa_actions.find((item) => item.documentId === docId && item.userId === userId && item.role === "SIGN" && item.status === "PENDING");
 	        if (!action) return json({ message: "დოკუმენტი თქვენთან ხელმოსაწერად არ არის" }, { status: 403 });
-	        if (!hasCompletedVisa(db, docId)) {
-	          return json({ message: "ხელმოწერამდე დოკუმენტმა სრულად უნდა გაიაროს ვიზირება." }, { status: 409 });
+	        if (!canProceedToSignature(db, docId)) {
+	          return json({ message: "არჩეული ვიზირების მონაწილეების დადასტურებამდე ხელმოწერა ვერ მოხერხდება." }, { status: 409 });
 	        }
 	        assignDocumentNumber(db, doc);
 	        action.status = "APPROVED";

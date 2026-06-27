@@ -453,8 +453,9 @@ export default function DocumentDetails({
     }
     const visaActions = visaHistory.filter((h: any) => h.role === "VISA");
     const hasFullyApprovedVisa = visaActions.length > 0 && visaActions.every((h: any) => h.status === VisaActionStatus.APPROVED);
-    if (!hasFullyApprovedVisa) {
-      window.alert("ხელმოწერამდე აირჩიეთ ვიზირების მონაწილეები და გაგზავნეთ დოკუმენტი ვიზირებაზე.");
+    const hasPendingVisa = visaActions.some((h: any) => h.status === VisaActionStatus.PENDING);
+    if (hasPendingVisa || (visaActions.length > 0 && !hasFullyApprovedVisa)) {
+      window.alert("არჩეული ვიზირების მონაწილეების დადასტურებამდე ხელმოწერა ვერ დაიწყება.");
       return;
     }
     try {
@@ -955,6 +956,7 @@ export default function DocumentDetails({
   const isSignedDocument = doc.signatureStatus === "SIGNED" || doc.status === DocumentStatus.SIGNED || doc.status === DocumentStatus.COMPLETED;
   const visaReviewActions = visaHistory.filter((h: any) => h.role === "VISA");
   const hasFullyApprovedVisa = visaReviewActions.length > 0 && visaReviewActions.every((h: any) => h.status === VisaActionStatus.APPROVED);
+  const canProceedToSignature = visaReviewActions.length === 0 || hasFullyApprovedVisa;
 
   return (
     <div className="space-y-6">
@@ -1488,7 +1490,7 @@ export default function DocumentDetails({
                 )}
 
                 {/* Send to sign panel */}
-	                {canEditWorkflow && hasFullyApprovedVisa && !visaHistory.some(h => h.role === "SIGN" && h.status === VisaActionStatus.PENDING) && (
+	                {canEditWorkflow && canProceedToSignature && !visaHistory.some(h => h.role === "SIGN" && h.status === VisaActionStatus.PENDING) && (
 	                  <div className="space-y-2.5">
 		                    <label className="text-xxs font-bold text-slate-400 block font-sans">ავტორთან ხელმოსაწერად გაგზავნა:</label>
 		                    <div className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-sans text-slate-700">
@@ -1502,9 +1504,9 @@ export default function DocumentDetails({
                     </button>
 	                  </div>
 	                )}
-	                {canEditWorkflow && !hasFullyApprovedVisa && (
+	                {canEditWorkflow && !canProceedToSignature && (
 	                  <p className="text-xxs text-slate-400 font-sans italic">
-	                    ხელმოწერა ჩაირთვება მხოლოდ ვიზირების სრულად დასრულების შემდეგ.
+	                    ხელმოწერა ჩაირთვება არჩეული ვიზირების სრულად დასრულების შემდეგ.
 	                  </p>
 	                )}
 
