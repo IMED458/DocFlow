@@ -21,6 +21,8 @@ import {
   User,
   UserRole,
   GEORGIAN_ROLES,
+  roleLabel,
+  normalizeRole,
   ExternalContact,
   NumberingRule,
   Stamp,
@@ -884,8 +886,8 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
               )}
 
               {/* Users List Grid */}
-              <div className="bg-white rounded-2xl border border-slate-100 shadow-xs overflow-hidden">
-                <table className="w-full text-left border-collapse">
+              <div className="bg-white rounded-2xl border border-slate-100 shadow-xs overflow-x-auto">
+                <table className="w-full min-w-[900px] text-left border-collapse">
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-100 text-slate-600 text-xs font-sans font-semibold uppercase">
                       <th className="p-4">სახელი და გვარი</th>
@@ -908,7 +910,7 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
                           <div>{u.email}</div>
                           <div className="text-xxs text-slate-400 font-mono">{u.phone || "—"}</div>
                         </td>
-                        <td className="p-4 text-indigo-600 font-semibold">{GEORGIAN_ROLES[u.role] || u.role}</td>
+                        <td className="p-4 text-indigo-600 font-semibold">{roleLabel(u.role)}</td>
                         <td className="p-4 text-slate-600 font-medium">{u.positionName || "—"}</td>
                         <td className="p-4">
                           <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
@@ -920,7 +922,7 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
                         <td className="p-4 text-center">
                           <button
                             onClick={() => {
-                              setEditingUser({ ...u, password: "" });
+                              setEditingUser({ ...u, role: normalizeRole(u.role), password: "" });
                               window.scrollTo({ top: 0, behavior: "smooth" });
                             }}
                             className="p-1.5 hover:bg-indigo-50 hover:text-indigo-600 text-slate-500 rounded-lg transition"
@@ -1251,7 +1253,7 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
                   <div key={u.id} className="pt-4 flex items-center justify-between gap-4">
                     <div>
                       <span className="font-semibold text-xs text-slate-800 font-sans block">{u.firstName} {u.lastName}</span>
-                      <span className="text-xxs font-sans text-slate-400 block mt-0.5">{u.positionName || GEORGIAN_ROLES[u.role]}</span>
+                      <span className="text-xxs font-sans text-slate-400 block mt-0.5">{u.positionName || roleLabel(u.role)}</span>
                     </div>
 
                     <div className="flex items-center gap-2">
