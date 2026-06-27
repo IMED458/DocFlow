@@ -144,9 +144,12 @@ async function ensureLoaded(): Promise<Db> {
 // ცვლილებების Firestore-ში ჩაწერა — სერიულად, მხოლოდ ცვლილებები.
 let writeChain: Promise<void> = Promise.resolve();
 
-function writeDb(db: Db) {
-  cache = db;
-  writeChain = writeChain.then(() => persistChanges(db)).catch((e) => console.error("Firestore ჩაწერა ჩაიშალა", e));
+async function writeDb(db: Db) {
+  const snapshot = structuredClone(db) as Db;
+  cache = snapshot;
+  const pendingWrite = writeChain.catch(() => undefined).then(() => persistChanges(snapshot));
+  writeChain = pendingWrite.catch(() => undefined);
+  await pendingWrite;
 }
 
 async function persistChanges(db: Db) {
@@ -288,7 +291,7 @@ async function handleApi(request: Request, init?: RequestInit) {
         const owner = db.documents.find((d) => d.id === file.documentId);
         if (owner) owner.attachmentCount = Math.max(0, (owner.attachmentCount || 0) - 1);
       }
-      writeDb(db);
+      await writeDb(db);
       return json({ message: "ფაილი წაიშალა" });
     }
   }
@@ -346,12 +349,12 @@ async function handleApi(request: Request, init?: RequestInit) {
     if (method === "GET") return json({ signatureImage: user.signatureImage });
     if (method === "POST") {
       user.signatureImage = (await readBody(init)).signatureImage;
-      writeDb(db);
+      await writeDb(db);
       return json({ message: "ხელმოწერა აიტვირთა" });
     }
     if (method === "DELETE") {
       delete user.signatureImage;
-      writeDb(db);
+      await writeDb(db);
       return json({ message: "ხელმოწერა წაიშალა" });
     }
   }
@@ -361,14 +364,14 @@ async function handleApi(request: Request, init?: RequestInit) {
 
   if (parts[0] === "notifications" && parts[1] === "clear" && method === "POST") {
     db.notifications = [];
-    writeDb(db);
+    await writeDb(db);
     return json({ ok: true });
   }
 
   if (parts[0] === "notifications" && parts[2] === "read" && method === "POST") {
     const item = db.notifications.find((n) => n.id === parts[1]);
     if (item) item.read = true;
-    writeDb(db);
+    await writeDb(db);
     return json(item || { ok: true });
   }
 
@@ -414,7 +417,7 @@ async function handleApi(request: Request, init?: RequestInit) {
           status: "PENDING",
         });
       }
-      writeDb(db);
+      await writeDb(db);
       return json(created, { status: 201 });
     }
     if (!doc) return json({ message: "დოკუმენტი ვერ მოიძებნა" }, { status: 404 });
@@ -435,20 +438,20 @@ async function handleApi(request: Request, init?: RequestInit) {
       db.visa_actions = byDoc(db.visa_actions);
       db.resolutions = byDoc(db.resolutions);
       db.tasks = byDoc(db.tasks);
-      writeDb(db);
+      await writeDb(db);
       return json({ message: "დოკუმენტი სრულად წაიშალა" });
     }
     if (method === "GET" && parts.length === 2) return json(doc);
     if (method === "PATCH" && parts.length === 2) {
       Object.assign(doc, await readBody(init), { updatedBy: userId, updatedAt: new Date().toISOString() });
-      writeDb(db);
+      await writeDb(db);
       return json(doc);
     }
     if (parts[2] === "body") {
       if (method === "GET") return json({ body: doc.body || "" });
       if (method === "PATCH") {
         doc.body = (await readBody(init)).body || "";
-        writeDb(db);
+        await writeDb(db);
         return json({ body: doc.body });
       }
     }
@@ -470,7 +473,7 @@ async function handleApi(request: Request, init?: RequestInit) {
         };
         db.document_files.push(created);
         doc.attachmentCount = (doc.attachmentCount || 0) + 1;
-        writeDb(db);
+        await writeDb(db);
         return json(created, { status: 201 });
       }
       return json(db.document_files.filter((f) => f.documentId === docId));
@@ -479,12 +482,12 @@ async function handleApi(request: Request, init?: RequestInit) {
     if (parts[2] === "recipients" && method === "POST") {
       const created = { ...(await readBody(init)), id: nextId("rec"), documentId: docId };
       db.document_recipients.push(created);
-      writeDb(db);
+      await writeDb(db);
       return json(created, { status: 201 });
     }
     if (parts[2] === "recipients" && method === "DELETE") {
       db.document_recipients = db.document_recipients.filter((r) => r.id !== parts[3]);
-      writeDb(db);
+      await writeDb(db);
       return json({ ok: true });
     }
     if (parts[2] === "basis-links") {
@@ -501,12 +504,12 @@ async function handleApi(request: Request, init?: RequestInit) {
           linkedAt: new Date().toISOString(),
         };
         db.document_basis_links.push(link);
-        writeDb(db);
+        await writeDb(db);
         return json(link, { status: 201 });
       }
       if (method === "DELETE") {
         db.document_basis_links = db.document_basis_links.filter((l) => l.id !== parts[3]);
-        writeDb(db);
+        await writeDb(db);
         return json({ ok: true });
       }
       return json(db.document_basis_links.filter((r) => r.documentId === docId));
@@ -517,12 +520,12 @@ async function handleApi(request: Request, init?: RequestInit) {
         const body = await readBody(init);
         const link = { id: nextId("link-ext"), documentId: docId, ...body, linkedAt: new Date().toISOString() };
         db.document_external_resolution_links.push(link);
-        writeDb(db);
+        await writeDb(db);
         return json(link, { status: 201 });
       }
       if (method === "DELETE") {
         db.document_external_resolution_links = db.document_external_resolution_links.filter((l) => l.id !== parts[3]);
-        writeDb(db);
+        await writeDb(db);
         return json({ ok: true });
       }
       return json(db.document_external_resolution_links.filter((r) => r.documentId === docId));
@@ -543,7 +546,7 @@ async function handleApi(request: Request, init?: RequestInit) {
         };
         db.resolutions.push(res);
         doc.status = "RESOLUTION_ASSIGNED";
-        writeDb(db);
+        await writeDb(db);
         return json(res, { status: 201 });
       }
       return json(db.resolutions.filter((r) => r.documentId === docId));
@@ -561,7 +564,7 @@ async function handleApi(request: Request, init?: RequestInit) {
           status: "PENDING",
         });
       });
-      writeDb(db);
+      await writeDb(db);
       return json(doc);
     }
     if (method === "POST" && parts[2] === "visa" && ["approve", "return", "reject"].includes(parts[3])) {
@@ -588,7 +591,7 @@ async function handleApi(request: Request, init?: RequestInit) {
           });
         }
       }
-      writeDb(db);
+      await writeDb(db);
       return json(doc);
     }
     if (method === "POST" && parts[2] === "signature" && parts[3] === "request") {
@@ -598,7 +601,7 @@ async function handleApi(request: Request, init?: RequestInit) {
       doc.signatureStatus = "PENDING";
       const hasPending = db.visa_actions.some((item) => item.documentId === docId && item.userId === targetSignerId && item.role === "SIGN" && item.status === "PENDING");
       if (hasPending) {
-        writeDb(db);
+        await writeDb(db);
         return json(doc);
       }
       db.visa_actions.push({
@@ -608,7 +611,7 @@ async function handleApi(request: Request, init?: RequestInit) {
         role: "SIGN",
         status: "PENDING",
       });
-      writeDb(db);
+      await writeDb(db);
       return json(doc);
     }
     if (method === "POST") {
@@ -637,7 +640,7 @@ async function handleApi(request: Request, init?: RequestInit) {
       }
       doc.status = statusByAction[parts[2]] || doc.status;
       doc.updatedAt = new Date().toISOString();
-      writeDb(db);
+      await writeDb(db);
       return json(doc);
     }
   }
@@ -669,7 +672,7 @@ async function handleApi(request: Request, init?: RequestInit) {
       read: false,
       createdAt: new Date().toISOString(),
     });
-    writeDb(db);
+    await writeDb(db);
     return json(task, { status: 201 });
   }
 
@@ -688,7 +691,7 @@ async function handleApi(request: Request, init?: RequestInit) {
       task.status = "RETURNED";
       task.returnedReason = body.returnedReason;
     }
-    writeDb(db);
+    await writeDb(db);
     return json(task);
   }
 
@@ -700,7 +703,7 @@ async function handleApi(request: Request, init?: RequestInit) {
       const body = await readBody(init);
       const created = { ...body, id: body.id || nextId(collectionName) };
       db[collectionKey].push(created);
-      writeDb(db);
+      await writeDb(db);
       return json(created, { status: 201 });
     }
     const item = db[collectionKey].find((row) => row.id === id);
@@ -708,12 +711,12 @@ async function handleApi(request: Request, init?: RequestInit) {
     if (method === "GET") return json(item);
     if (method === "PATCH") {
       Object.assign(item, await readBody(init));
-      writeDb(db);
+      await writeDb(db);
       return json(item);
     }
     if (method === "DELETE") {
       db[collectionKey] = db[collectionKey].filter((row) => row.id !== id);
-      writeDb(db);
+      await writeDb(db);
       return json({ ok: true });
     }
   }
@@ -732,7 +735,16 @@ export function installMockApi() {
     const request = new Request(input, init);
     const url = new URL(request.url);
     if (url.pathname.startsWith("/api/")) {
-      return handleApi(request, init);
+      return handleApi(request, init).catch((error) => {
+        console.error("DocFlow API / Firestore შეცდომა", error);
+        return json(
+          {
+            message:
+              "მონაცემების Firebase-ში შენახვა ვერ მოხერხდა. შეამოწმეთ Firestore rules და Firebase პროექტის კავშირი.",
+          },
+          { status: 500 }
+        );
+      });
     }
     return realFetch(input, init);
   };

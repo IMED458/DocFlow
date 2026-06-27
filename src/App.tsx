@@ -617,6 +617,7 @@ export default function App() {
             <DocumentDetails
               documentId={selectedDocId}
               currentUser={currentUser}
+              documentTypes={documentTypes}
               onBack={() => setSelectedDocId(null)}
               onRefresh={() => loadInitialData(currentUser)}
             />

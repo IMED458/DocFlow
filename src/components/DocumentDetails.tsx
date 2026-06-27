@@ -43,13 +43,62 @@ import DocumentEditor from "./DocumentEditor.js";
 interface DocumentDetailsProps {
   documentId: string;
   currentUser: User;
+  documentTypes?: Array<{ id: string; label: string; isActive?: boolean }>;
   onBack: () => void;
   onRefresh: () => void;
+}
+
+// Code39 შტრიხკოდის ცხრილი (9 ელემენტი თითო სიმბოლოზე, ზოლი/ფანჯარა მონაცვლეობით).
+const CODE39: Record<string, string> = {
+  "0": "nnnwwnwnn", "1": "wnnwnnnnw", "2": "nnwwnnnnw", "3": "wnwwnnnnn", "4": "nnnwwnnnw",
+  "5": "wnnwwnnnn", "6": "nnwwwnnnn", "7": "nnnwnnwnw", "8": "wnnwnnwnn", "9": "nnwwnnwnn",
+  "A": "wnnnnwnnw", "B": "nnwnnwnnw", "C": "wnwnnwnnn", "D": "nnnnwwnnw", "E": "wnnnwwnnn",
+  "F": "nnwnwwnnn", "G": "nnnnnwwnw", "H": "wnnnnwwnn", "I": "nnwnnwwnn", "J": "nnnnwwwnn",
+  "K": "wnnnnnnww", "L": "nnwnnnnww", "M": "wnwnnnnwn", "N": "nnnnwnnww", "O": "wnnnwnnwn",
+  "P": "nnwnwnnwn", "Q": "nnnnnnwww", "R": "wnnnnnwwn", "S": "nnwnnnwwn", "T": "nnnnwnwwn",
+  "U": "wwnnnnnnw", "V": "nwwnnnnnw", "W": "wwwnnnnnn", "X": "nwnnwnnnw", "Y": "wwnnwnnnn",
+  "Z": "nwwnwnnnn", "-": "nwnnnnwnw", ".": "wwnnnnwnn", " ": "nwwnnnwnn", "*": "nwnnwnwnn",
+};
+
+function Barcode({ value, height = 44 }: { value: string; height?: number }) {
+  const text = (value || "").toUpperCase().replace(/[^0-9A-Z\-. ]/g, "");
+  const chars = `*${text}*`.split("");
+  const narrow = 1.4;
+  const wide = narrow * 2.6;
+  const gap = narrow;
+  const bars: Array<{ x: number; w: number }> = [];
+  let x = 0;
+  for (const ch of chars) {
+    const pattern = CODE39[ch];
+    if (!pattern) continue;
+    for (let i = 0; i < pattern.length; i++) {
+      const w = pattern[i] === "w" ? wide : narrow;
+      if (i % 2 === 0) bars.push({ x, w }); // ლუწი ინდექსი = შავი ზოლი
+      x += w;
+    }
+    x += gap; // სიმბოლოებს შორის ვიწრო ფანჯარა
+  }
+  const width = Math.max(x, 1);
+  return (
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      width={`${Math.min(62, width * 0.42)}mm`}
+      height={`${(height / width) * Math.min(62, width * 0.42)}mm`}
+      preserveAspectRatio="none"
+      className="block ml-auto"
+      shapeRendering="crispEdges"
+    >
+      {bars.map((b, i) => (
+        <rect key={i} x={b.x} y={0} width={b.w} height={height} fill="#000" />
+      ))}
+    </svg>
+  );
 }
 
 export default function DocumentDetails({
   documentId,
   currentUser,
+  documentTypes = [],
   onBack,
   onRefresh
 }: DocumentDetailsProps) {
@@ -151,6 +200,13 @@ export default function DocumentDetails({
     dateFrom: "",
     dateTo: ""
   });
+
+  const isDraft = doc?.status === DocumentStatus.DRAFT;
+  const getTypeLabel = (type?: string) =>
+    documentTypes.find((item) => item.id === type)?.label ||
+    GEORGIAN_DOCUMENT_TYPES[type as DocumentType] ||
+    type ||
+    "—";
 
   // Fetch all related entities from APIs
   const loadDetails = async () => {
@@ -1077,8 +1133,8 @@ export default function DocumentDetails({
                         {formattedPrintDate}
                       </div>
 	                      <div className="text-right">
-	                        <div className="official-barcode ml-auto"></div>
-	                        {printNumber && <div className="text-[20px] mt-2 tracking-wide">{printNumber}</div>}
+	                        <Barcode value={printNumber || doc.entryNumber || doc.id} />
+	                        {printNumber && <div className="text-[20px] mt-2 tracking-wide font-mono">{printNumber}</div>}
 	                        {doc.entryNumber && <div className="text-[11px] mt-1 font-sans text-slate-600">შიდა N: {doc.entryNumber}</div>}
 	                      </div>
                     </div>
@@ -1165,11 +1221,50 @@ export default function DocumentDetails({
               {openSections.meta ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </button>
             {openSections.meta && (
-              <div className="p-4 space-y-3.5">
-                {doc.status === DocumentStatus.DRAFT ? (
-                  <div className="space-y-3 text-xs font-sans">
-                    <div>
-                      <label className="text-slate-400 font-semibold block mb-1">კატეგორია:</label>
+              <div className="p-4 space-y-3 text-xs font-sans">
+                {/* დაგენერირებული იდენტიფიკატორები (read-only) */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-slate-400 block font-semibold">დოკუმენტის №:</span>
+                    <span className="font-mono font-bold text-slate-800">{doc.documentNumber || "—"}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block font-semibold">თარიღი:</span>
+                    <span className="font-semibold text-slate-800">{doc.registrationDate || doc.documentDate || "—"}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block font-semibold">შიდა №:</span>
+                    <span className="font-mono font-bold text-slate-800">{doc.entryNumber || "—"}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block font-semibold">ხელმოწერის თარიღი:</span>
+                    <span className="font-semibold text-slate-800">{doc.signedAt ? doc.signedAt.split("T")[0] : "—"}</span>
+                  </div>
+                </div>
+
+                <div className="border-t border-slate-100 pt-3 space-y-3">
+                  {/* ტიპი */}
+                  <div>
+                    <label className="text-slate-400 font-semibold block mb-1">ტიპი:</label>
+                    {isDraft ? (
+                      <select
+                        value={doc.documentType}
+                        onChange={e => handleSaveMetadata({ documentType: e.target.value as DocumentType })}
+                        className="w-full border border-slate-200 rounded-lg p-2 bg-white"
+                      >
+                        {(documentTypes.length ? documentTypes : Object.entries(GEORGIAN_DOCUMENT_TYPES).map(([id, label]) => ({ id, label }))).map((t: any) => (
+                          <option key={t.id} value={t.id}>{t.label}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="font-semibold text-slate-800">{getTypeLabel(doc.documentType)}</span>
+                    )}
+                  </div>
+
+                  {/* მიმართულება (კატეგორია) */}
+                  <div>
+                    <label className="text-slate-400 font-semibold block mb-1">მიმართულება:</label>
+                    {isDraft ? (
                       <select
                         value={doc.category}
                         onChange={e => handleSaveMetadata({ category: e.target.value as DocumentCategory })}
@@ -1179,35 +1274,85 @@ export default function DocumentDetails({
                           <option key={k} value={k}>{v}</option>
                         ))}
                       </select>
-                    </div>
+                    ) : (
+                      <span className="font-semibold text-slate-800">{GEORGIAN_CATEGORIES[doc.category]}</span>
+                    )}
+                  </div>
 
-                    <div>
-                      <label className="text-slate-400 font-semibold block mb-1">ტიპი:</label>
-                      <select
-                        value={doc.documentType}
-                        onChange={e => handleSaveMetadata({ documentType: e.target.value as DocumentType })}
+                  {/* ვადა */}
+                  <div>
+                    <label className="text-slate-400 font-semibold block mb-1">ვადა:</label>
+                    {isDraft ? (
+                      <input
+                        type="date"
+                        value={doc.deadline ? doc.deadline.split("T")[0] : ""}
+                        onChange={e => handleSaveMetadata({ deadline: e.target.value })}
                         className="w-full border border-slate-200 rounded-lg p-2 bg-white"
-                      >
-                        {Object.entries(GEORGIAN_DOCUMENT_TYPES).map(([k, v]) => (
-                          <option key={k} value={k}>{v}</option>
-                        ))}
-                      </select>
+                      />
+                    ) : (
+                      <span className="font-semibold text-slate-800">{doc.deadline ? doc.deadline.split("T")[0] : "—"}</span>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    {/* გვერდები */}
+                    <div>
+                      <label className="text-slate-400 font-semibold block mb-1">გვერდები:</label>
+                      {isDraft ? (
+                        <input
+                          type="number"
+                          min={1}
+                          value={doc.pageCount ?? 1}
+                          onChange={e => setDoc({ ...doc, pageCount: Number(e.target.value) })}
+                          onBlur={e => handleSaveMetadata({ pageCount: Number(e.target.value) || 1 })}
+                          className="w-full border border-slate-200 rounded-lg p-2 bg-white"
+                        />
+                      ) : (
+                        <span className="font-semibold text-slate-800">{doc.pageCount ?? 1}</span>
+                      )}
                     </div>
 
+                    {/* დანართები */}
                     <div>
-                      <label className="text-slate-400 font-semibold block mb-1">პრიორიტეტი:</label>
+                      <label className="text-slate-400 font-semibold block mb-1">დანართები:</label>
+                      {isDraft ? (
+                        <input
+                          type="number"
+                          min={0}
+                          value={doc.attachmentCount ?? 0}
+                          onChange={e => setDoc({ ...doc, attachmentCount: Number(e.target.value) })}
+                          onBlur={e => handleSaveMetadata({ attachmentCount: Number(e.target.value) || 0 })}
+                          className="w-full border border-slate-200 rounded-lg p-2 bg-white"
+                        />
+                      ) : (
+                        <span className="font-semibold text-slate-800">{doc.attachmentCount ?? 0}</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* პრიორიტეტი */}
+                  <div>
+                    <label className="text-slate-400 font-semibold block mb-1">პრიორიტეტი:</label>
+                    {isDraft ? (
                       <select
                         value={doc.priority}
                         onChange={e => handleSaveMetadata({ priority: e.target.value })}
                         className="w-full border border-slate-200 rounded-lg p-2 bg-white"
                       >
-                        <option value="NORMAL">სტანდარტული</option>
+                        <option value="LOW">დაბალი</option>
+                        <option value="NORMAL">ჩვეულებრივი</option>
+                        <option value="HIGH">მაღალი</option>
                         <option value="URGENT">სასწრაფო</option>
                       </select>
-                    </div>
+                    ) : (
+                      <span className="font-semibold text-slate-800">{doc.priority}</span>
+                    )}
+                  </div>
 
-                    <div>
-                      <label className="text-slate-400 font-semibold block mb-1">საიდუმლოება:</label>
+                  {/* საიდუმლოება */}
+                  <div>
+                    <label className="text-slate-400 font-semibold block mb-1">საიდუმლოება:</label>
+                    {isDraft ? (
                       <select
                         value={doc.confidentiality}
                         onChange={e => handleSaveMetadata({ confidentiality: e.target.value })}
@@ -1216,36 +1361,11 @@ export default function DocumentDetails({
                         <option value="PUBLIC">საჯარო</option>
                         <option value="CONFIDENTIAL">საიდუმლო</option>
                       </select>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-2 text-xs font-sans text-slate-700">
-                    <div>
-                      <span className="text-slate-400 block font-semibold">ნომერი:</span>
-                      <span className="font-mono font-bold text-slate-800">{doc.documentNumber || "პროექტი"}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block font-semibold">რეგისტრაცია:</span>
-                      <span className="font-semibold text-slate-800">{doc.registrationNumber || "არააქტიური"}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block font-semibold">თარიღი:</span>
-                      <span className="font-semibold text-slate-800">{doc.registrationDate || "—"}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block font-semibold">კატეგორია:</span>
-                      <span className="font-semibold text-slate-800">{GEORGIAN_CATEGORIES[doc.category]}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block font-semibold">ტიპი:</span>
-                      <span className="font-semibold text-slate-800">{GEORGIAN_DOCUMENT_TYPES[doc.documentType]}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block font-semibold">კონფიდენციალურობა:</span>
+                    ) : (
                       <span className="font-semibold text-slate-800">{doc.confidentiality === "CONFIDENTIAL" ? "საიდუმლო" : "საჯარო"}</span>
-                    </div>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
             )}
           </div>
