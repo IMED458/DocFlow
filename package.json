@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && cp dist/app.html dist/index.html && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
-    "build:pages": "GITHUB_PAGES=true VITE_STATIC_API=true vite build && cp dist/app.html dist/index.html && cp dist/index.html dist/404.html",
+    "build:pages": "GITHUB_PAGES=true VITE_STATIC_API=true vite build && cp dist/app.html dist/index.html && cp dist/index.html dist/404.html && npm run sync:pages-root",
+    "sync:pages-root": "rm -rf assets && cp -R dist/assets assets && cp dist/index.html index.html",
     "start": "NODE_ENV=production node dist/server.cjs",
     "clean": "rm -rf dist db.json",
     "lint": "tsc --noEmit"

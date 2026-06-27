@@ -111,15 +111,24 @@ export default function App() {
   };
 
   // Standard login submit
-  const handleStandardLogin = (e: React.FormEvent) => {
+  const handleStandardLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Simple look up mock
-    const found = users.find(u => u.email.toLowerCase() === loginUsername.toLowerCase());
-    if (found) {
-      setCurrentUser(found);
-      loadInitialData(found);
-    } else {
-      setLoginError("მომხმარებელი მსგავსი ელ-ფოსტით ვერ მოიძებნა.");
+    setLoginError("");
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: loginUsername, password: loginPassword })
+      });
+      if (!res.ok) {
+        setLoginError("არასწორი ელ-ფოსტა ან პაროლი.");
+        return;
+      }
+      const data = await res.json();
+      setCurrentUser(data.user);
+      loadInitialData(data.user);
+    } catch (err) {
+      setLoginError("ავტორიზაცია ვერ მოხერხდა. სცადეთ თავიდან.");
     }
   };
 
@@ -287,38 +296,8 @@ export default function App() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 bg-white p-8 rounded-3xl border border-slate-100 shadow-xl w-full max-w-3xl">
-            {/* Quick Demo Personas (Click to Login directly) */}
-            <div className="space-y-4">
-              <h3 className="text-base font-bold text-slate-800 font-display">სატესტო პროფილები (Personas)</h3>
-              <p className="text-xxs text-slate-400 font-sans leading-relaxed">
-                დააწკაპუნეთ სასურველ როლზე, რათა შეხვიდეთ შესაბამისი უფლებამოსილებით:
-              </p>
-              <div className="space-y-2">
-                {users.map(u => (
-                  <button
-                    key={u.id}
-                    onClick={() => handlePersonaLogin(u)}
-                    className="w-full text-left p-3 rounded-xl border border-slate-100 hover:border-indigo-200 bg-slate-50/50 hover:bg-indigo-50/30 transition flex items-center justify-between"
-                  >
-                    <div>
-                      <span className="font-semibold text-xs text-slate-800 font-sans block">
-                        {u.firstName} {u.lastName}
-                      </span>
-                      <span className="text-[10px] text-slate-500 font-sans mt-0.5 block">
-                        კოდი: {u.personalNumber}
-                      </span>
-                    </div>
-                    <span className="text-xxs font-sans font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded">
-                      {GEORGIAN_ROLES[u.role] || u.role}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Standard Login Forms */}
-            <div className="space-y-6 flex flex-col justify-center">
+          <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-xl w-full max-w-md">
+            <div className="space-y-6">
               <h3 className="text-base font-bold text-slate-800 font-display">სისტემაში შესვლა</h3>
               <form onSubmit={handleStandardLogin} className="space-y-4">
                 {loginError && (
@@ -344,6 +323,7 @@ export default function App() {
                     placeholder="••••••••"
                     value={loginPassword}
                     onChange={e => setLoginPassword(e.target.value)}
+                    required
                     className="w-full border border-slate-200 rounded-xl p-3 text-xs font-sans focus:outline-hidden focus:ring-2 focus:ring-slate-900 transition"
                   />
                 </div>

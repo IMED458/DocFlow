@@ -629,8 +629,12 @@ export default function DocumentDetails({
 
   // Helper templates
   const defaultTemplate = templates.find(t => t.isDefault) || templates[0];
+  const defaultStamp = stamps.find((stamp: any) => stamp.isActive) || stamps[0];
   const signedAction = visaHistory.find((h: any) => h.role === "SIGN" && h.status === VisaActionStatus.APPROVED);
   const signerId = doc.signedById || signedAction?.userId || doc.authorId;
+  const printDate = doc.registrationDate || doc.documentDate || new Date().toISOString().split("T")[0];
+  const formattedPrintDate = printDate.split("-").reverse().join("/");
+  const printNumber = doc.documentNumber || "პროექტი";
 
   return (
     <div className="space-y-6">
@@ -684,6 +688,14 @@ export default function DocumentDetails({
               {doc.status === DocumentStatus.ARCHIVED ? "აღდგენა არქივიდან" : "არქივში გადატანა"}
             </button>
           )}
+
+          <button
+            onClick={() => setViewMode("print")}
+            className="flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-4 py-2 rounded-xl text-xs font-sans font-semibold transition"
+          >
+            <Printer className="w-4 h-4" />
+            ბეჭდვა
+          </button>
         </div>
       </div>
 
@@ -768,56 +780,75 @@ export default function DocumentDetails({
             ) : (
               /* A4 Printable Sheet Display */
               <div className="bg-slate-500 p-4 sm:p-8 rounded-2xl flex flex-col items-center overflow-x-auto print:bg-white print:p-0">
-                <div id="printable-doc" className="bg-white w-[210mm] min-h-[297mm] px-[18mm] py-[16mm] shadow-2xl relative text-slate-900 font-sans flex flex-col print:shadow-none">
+                <div id="printable-doc" className="bg-white w-[210mm] min-h-[297mm] px-[17mm] pt-[15mm] pb-[18mm] shadow-2xl relative text-slate-950 font-serif flex flex-col print:shadow-none">
                   <div className="flex-1">
-                    <div className="pb-7 border-b-2 border-slate-900">
+                    <div className="official-letterhead">
                       {defaultTemplate?.headerImage ? (
-                        <img src={defaultTemplate.headerImage} className="block w-full max-h-[42mm] object-contain object-center" alt="Header" />
+                        <img src={defaultTemplate.headerImage} className="block w-full max-h-[48mm] object-contain object-center" alt="Header" />
                       ) : (
-                        <div className="text-center">
-                          <h4 className="text-lg font-bold font-display text-slate-950">
+                        <div className="grid grid-cols-[1fr_28mm_1fr] items-center gap-8 min-h-[42mm]">
+                          <div className="text-center text-[13px] leading-5 font-bold">
                             {defaultTemplate?.headerTextGeo || "ორგანიზაციის დასახელება"}
-                          </h4>
-                          {defaultTemplate?.headerTextEng && (
-                            <p className="text-xs text-slate-500 font-sans mt-1">{defaultTemplate.headerTextEng}</p>
-                          )}
+                          </div>
+                          <div className="h-[28mm] flex items-center justify-center">
+                            {defaultTemplate?.logoUrl ? (
+                              <img src={defaultTemplate.logoUrl} className="max-h-[28mm] max-w-[24mm] object-contain" alt="Logo" />
+                            ) : (
+                              <div className="w-[20mm] h-[26mm] border border-slate-300 flex items-center justify-center text-[9px] text-slate-400 text-center">
+                                ლოგო
+                              </div>
+                            )}
+                          </div>
+                          <div className="text-center text-[12px] leading-5 font-bold">
+                            {defaultTemplate?.headerTextEng || "Organization official letterhead"}
+                          </div>
                         </div>
                       )}
                     </div>
 
-                    <div className="pt-7 text-right text-sm font-semibold text-slate-800">
-                      <span>დოკუმენტის ნომერი: {doc.documentNumber || "პროექტი"}</span>
+                    <div className="official-separator">
+                      <span></span>
                     </div>
 
-                    <div className="space-y-7 mt-9">
-                      <h2 className="text-center text-lg font-bold font-display text-slate-950">
-                        {GEORGIAN_DOCUMENT_TYPES[doc.documentType]}
-                      </h2>
+                    <div className="grid grid-cols-2 gap-8 mt-9 items-start">
+                      <div className="text-[19px] leading-none">
+                        {formattedPrintDate}
+                      </div>
+                      <div className="text-right">
+                        <div className="official-barcode ml-auto"></div>
+                        <div className="text-[20px] mt-2 tracking-wide">{printNumber}</div>
+                      </div>
+                    </div>
 
+                    <div className="mt-8 ml-auto max-w-[100mm] text-right text-[17px] leading-7">
+                      {doc.recipient || doc.subject}
+                    </div>
+
+                    <div className="mt-8 space-y-6 text-[18px] leading-8">
                       <div
-                        className="prose max-w-none text-slate-900 font-sans text-[13px] leading-7 whitespace-pre-wrap break-words"
+                        className="official-document-body prose max-w-none text-slate-950 font-serif whitespace-pre-wrap break-words"
                         dangerouslySetInnerHTML={{ __html: doc.body || "<p class='text-slate-400 italic'>ტექსტი არ არის შევსებული</p>" }}
                       ></div>
                     </div>
                   </div>
 
-                  <div className="mt-16 pt-6">
+                  <div className="mt-14 pt-4">
                     <div className="flex items-end justify-between">
-                      <div className="min-w-[62mm]">
-                        <span className="font-sans font-bold text-sm text-slate-900 block">
+                      <div className="max-w-[92mm] text-[16px] leading-6">
+                        <span className="block">
                           {getUserPositionAndDept(signerId) || "ხელმძღვანელი"}
                         </span>
-                        <span className="font-sans font-bold text-sm text-slate-900 block mt-1">
+                        <span className="block mt-1">
                           {getUserName(signerId)}
                         </span>
                       </div>
 
-                      <div className="relative w-52 h-24 flex items-center justify-center">
+                      <div className="relative w-[78mm] h-[28mm] flex items-center justify-center">
                         {doc.status === DocumentStatus.SIGNED && users.find(u => u.id === signerId)?.signatureImage && (
                           <img
                             src={users.find(u => u.id === signerId)?.signatureImage}
                             alt="ხელმოწერა"
-                            className="absolute w-40 h-20 object-contain z-10 pointer-events-none select-none"
+                            className="absolute w-[70mm] h-[22mm] object-contain z-10 pointer-events-none select-none"
                           />
                         )}
 
@@ -828,6 +859,14 @@ export default function DocumentDetails({
                         )}
                       </div>
                     </div>
+
+                    {doc.status === DocumentStatus.SIGNED && defaultStamp?.imageUrl && (
+                      <img
+                        src={defaultStamp.imageUrl}
+                        alt="ბეჭედი"
+                        className="absolute right-[17mm] bottom-[12mm] w-[25mm] h-[25mm] object-contain opacity-95"
+                      />
+                    )}
                   </div>
                 </div>
 

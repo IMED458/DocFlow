@@ -22,3 +22,74 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+.official-letterhead {
+  min-height: 45mm;
+}
+
+.official-separator {
+  position: relative;
+  margin-top: 10mm;
+  border-top: 3px double #111827;
+  height: 8mm;
+}
+
+.official-separator span {
+  position: absolute;
+  left: 50%;
+  top: -1px;
+  width: 1px;
+  height: 8mm;
+  background: #111827;
+}
+
+.official-barcode {
+  width: 62mm;
+  height: 8mm;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      #000 0 1px,
+      transparent 1px 2px,
+      #000 2px 4px,
+      transparent 4px 6px,
+      #000 6px 7px,
+      transparent 7px 9px
+    );
+}
+
+.official-document-body,
+.official-document-body p,
+.official-document-body div {
+  font-size: 18px;
+  line-height: 1.45;
+  text-align: justify;
+}
+
+.official-document-body p {
+  margin: 0 0 12px;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  #printable-doc,
+  #printable-doc * {
+    visibility: visible !important;
+  }
+
+  #printable-doc {
+    position: absolute !important;
+    inset: 0 auto auto 0 !important;
+    width: 210mm !important;
+    min-height: 297mm !important;
+    box-shadow: none !important;
+  }
+}
