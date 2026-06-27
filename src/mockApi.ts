@@ -177,6 +177,17 @@ async function handleApi(request: Request, init?: RequestInit) {
         updatedAt: now,
       };
       db.documents.unshift(created);
+      if (body.signerId) {
+        created.status = "SENT_TO_SIGN";
+        created.signatureStatus = "PENDING";
+        db.visa_actions.push({
+          id: nextId("sign-act"),
+          documentId: created.id,
+          userId: body.signerId,
+          role: "SIGN",
+          status: "PENDING",
+        });
+      }
       writeDb(db);
       return json(created, { status: 201 });
     }
@@ -196,7 +207,18 @@ async function handleApi(request: Request, init?: RequestInit) {
       }
     }
     if (parts[2] === "files") return json(db.document_files.filter((f) => f.documentId === docId));
-    if (parts[2] === "recipients") return json(db.document_recipients.filter((r) => r.documentId === docId));
+    if (parts[2] === "recipients" && method === "GET") return json(db.document_recipients.filter((r) => r.documentId === docId));
+    if (parts[2] === "recipients" && method === "POST") {
+      const created = { ...(await readBody(init)), id: nextId("rec"), documentId: docId };
+      db.document_recipients.push(created);
+      writeDb(db);
+      return json(created, { status: 201 });
+    }
+    if (parts[2] === "recipients" && method === "DELETE") {
+      db.document_recipients = db.document_recipients.filter((r) => r.id !== parts[3]);
+      writeDb(db);
+      return json({ ok: true });
+    }
     if (parts[2] === "basis-links") return json(db.document_basis_links.filter((r) => r.documentId === docId));
     if (parts[2] === "versions") return json(db.document_versions.filter((v) => v.documentId === docId));
     if (parts[2] === "visa-history") return json(db.visa_actions.filter((v) => v.documentId === docId));

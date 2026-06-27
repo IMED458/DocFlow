@@ -69,7 +69,7 @@ export default function DocumentDetails({
   const [openSections, setOpenSections] = useState({
     meta: false,
     authors: false,
-    signers: false,
+    signers: true,
     visa: false,
     files: false,
     basis: false,
@@ -118,6 +118,8 @@ export default function DocumentDetails({
 
   // Recipients input
   const [selectedRecipientId, setSelectedRecipientId] = useState("");
+  const [manualRecipientName, setManualRecipientName] = useState("");
+  const [manualRecipientPosition, setManualRecipientPosition] = useState("");
 
   // Basis search
   const [basisQuery, setBasisQuery] = useState("");
@@ -340,9 +342,11 @@ export default function DocumentDetails({
 
   // Add Recipient
   const handleAddRecipient = async () => {
-    if (!selectedRecipientId) return;
+    if (!selectedRecipientId && !manualRecipientName.trim()) return;
     try {
       const u = users.find(x => x.id === selectedRecipientId);
+      const recipientName = manualRecipientName.trim() || (u ? `${u.firstName} ${u.lastName}` : "");
+      const recipientPosition = manualRecipientPosition.trim() || (u ? (u.positionName || GEORGIAN_ROLES[u.role]) : "");
       const res = await fetch(`/api/documents/${doc.id}/recipients`, {
         method: "POST",
         headers: {
@@ -350,16 +354,40 @@ export default function DocumentDetails({
           "Authorization": `Bearer jwt-mock-token-${currentUser.id}`
         },
         body: JSON.stringify({
-          recipientType: "INTERNAL_USER",
+          recipientType: u ? "INTERNAL_USER" : "EXTERNAL_PERSON",
           recipientUserId: u?.id,
-          recipientName: u ? `${u.firstName} ${u.lastName}` : "სხვა თანამშრომელი",
+          recipientName,
+          recipientPosition,
           deliveryMethod: "SYSTEM"
         })
       });
       if (res.ok) {
         setSelectedRecipientId("");
+        setManualRecipientName("");
+        setManualRecipientPosition("");
         loadDetails();
       }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleAddChancelleryRecipient = async () => {
+    try {
+      const res = await fetch(`/api/documents/${doc.id}/recipients`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer jwt-mock-token-${currentUser.id}`
+        },
+        body: JSON.stringify({
+          recipientType: "CHANCELLERY",
+          recipientName: "კანცელარია",
+          recipientPosition: "საქმისწარმოების სამსახური",
+          deliveryMethod: "SYSTEM"
+        })
+      });
+      if (res.ok) loadDetails();
     } catch (e) {
       console.error(e);
     }
@@ -1257,23 +1285,47 @@ export default function DocumentDetails({
               <div className="p-4 space-y-3">
                 {/* Add recipient controls */}
                 {doc.status !== DocumentStatus.SIGNED && (
-                  <div className="flex gap-1.5">
+                  <div className="space-y-2">
                     <select
                       value={selectedRecipientId}
                       onChange={e => setSelectedRecipientId(e.target.value)}
-                      className="border border-slate-200 rounded-lg p-2 text-xxs font-sans bg-white flex-1 focus:outline-hidden"
+                      className="border border-slate-200 rounded-lg p-2 text-xxs font-sans bg-white w-full focus:outline-hidden"
                     >
-                      <option value="">თანამშრომელი...</option>
+                      <option value="">თანამშრომელი ან შიდა ადრესატი...</option>
                       {users.map(u => (
-                        <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>
+                        <option key={u.id} value={u.id}>{u.firstName} {u.lastName} - {u.positionName || GEORGIAN_ROLES[u.role]}</option>
                       ))}
                     </select>
-                    <button
-                      onClick={handleAddRecipient}
-                      className="bg-slate-900 text-white rounded-lg px-3 hover:bg-slate-800 transition"
-                    >
-                      <Plus className="w-4 h-4" />
-                    </button>
+                    <div className="grid grid-cols-1 gap-2">
+                      <input
+                        value={manualRecipientName}
+                        onChange={e => setManualRecipientName(e.target.value)}
+                        placeholder="ნებისმიერი პირი: სახელი და გვარი"
+                        className="border border-slate-200 rounded-lg p-2 text-xxs font-sans bg-white focus:outline-hidden"
+                      />
+                      <input
+                        value={manualRecipientPosition}
+                        onChange={e => setManualRecipientPosition(e.target.value)}
+                        placeholder="თანამდებობა / ორგანიზაცია"
+                        className="border border-slate-200 rounded-lg p-2 text-xxs font-sans bg-white focus:outline-hidden"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={handleAddChancelleryRecipient}
+                        className="bg-indigo-50 text-indigo-700 rounded-lg px-3 py-2 hover:bg-indigo-100 transition text-xxs font-bold"
+                      >
+                        კანცელარია
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleAddRecipient}
+                        className="bg-slate-900 text-white rounded-lg px-3 py-2 hover:bg-slate-800 transition text-xxs font-bold flex items-center justify-center gap-1"
+                      >
+                        <Plus className="w-4 h-4" /> დამატება
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -1284,7 +1336,10 @@ export default function DocumentDetails({
                   <div className="space-y-1.5">
                     {recipients.map(rec => (
                       <div key={rec.id} className="p-2 bg-slate-50 border rounded-lg flex items-center justify-between text-xxs font-sans text-slate-700">
-                        <span className="font-semibold truncate">{rec.recipientName}</span>
+                        <span className="font-semibold truncate">
+                          {rec.recipientName}
+                          {rec.recipientPosition && <span className="text-slate-400 font-normal"> - {rec.recipientPosition}</span>}
+                        </span>
                         {doc.status !== DocumentStatus.SIGNED && (
                           <button
                             onClick={() => handleDeleteRecipient(rec.id)}

@@ -393,6 +393,19 @@ app.post("/api/documents", (req, res) => {
 
   data.documents.push(newDoc);
 
+  if (req.body.signerId) {
+    newDoc.status = DocumentStatus.SENT_TO_SIGN;
+    newDoc.signatureStatus = "PENDING";
+    data.visa_actions.push({
+      id: "sign-act-" + Math.random().toString(36).substring(2, 9),
+      documentId: docId,
+      userId: req.body.signerId,
+      role: "SIGN",
+      status: VisaActionStatus.PENDING
+    });
+    createNotification(req.body.signerId, "ხელმოსაწერი დოკუმენტი", `დოკუმენტი ${newDoc.subject} გადმოგეცათ ხელმოსაწერად.`);
+  }
+
   // Add initial version
   const ver: DocumentVersion = {
     id: "ver-" + Math.random().toString(36).substring(2, 9),

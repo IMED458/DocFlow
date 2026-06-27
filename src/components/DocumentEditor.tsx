@@ -38,21 +38,30 @@ export default function DocumentEditor({
   const [autoSaveStatus, setAutoSaveStatus] = useState<"SAVED" | "SAVING" | "IDLE">("IDLE");
   const [showTemplates, setShowTemplates] = useState(false);
   const editorRef = useRef<HTMLDivElement>(null);
+  const lastSavedBodyRef = useRef(document?.body || "");
+  const pendingBodyRef = useRef(document?.body || "");
 
   useEffect(() => {
     if (document) {
-      setBody(document.body);
+      const nextBody = document.body || "";
+      setBody(nextBody);
+      lastSavedBodyRef.current = nextBody;
+      pendingBodyRef.current = nextBody;
+      if (editorRef.current && editorRef.current.innerHTML !== nextBody) {
+        editorRef.current.innerHTML = nextBody;
+      }
     }
-  }, [document]);
+  }, [document?.id]);
 
-  // Auto save simulator
   useEffect(() => {
     if (isReadOnly) return;
     const delayDebounce = setTimeout(() => {
-      if (body && body !== document?.body) {
+      const nextBody = pendingBodyRef.current;
+      if (nextBody !== lastSavedBodyRef.current) {
         setAutoSaveStatus("SAVING");
         setTimeout(() => {
-          onSaveBody(body);
+          onSaveBody(nextBody);
+          lastSavedBodyRef.current = nextBody;
           setAutoSaveStatus("SAVED");
           setTimeout(() => setAutoSaveStatus("IDLE"), 2000);
         }, 1000);
@@ -60,13 +69,14 @@ export default function DocumentEditor({
     }, 3000);
 
     return () => clearTimeout(delayDebounce);
-  }, [body, document, isReadOnly]);
+  }, [body, isReadOnly]);
 
   // Exec HTML editor commands
   const execCommand = (command: string, value: string = "") => {
     if (isReadOnly) return;
     window.document.execCommand(command, false, value);
     if (editorRef.current) {
+      pendingBodyRef.current = editorRef.current.innerHTML;
       setBody(editorRef.current.innerHTML);
     }
   };
@@ -111,12 +121,16 @@ export default function DocumentEditor({
     }
     if (editorRef.current) {
       editorRef.current.innerHTML = tplContent;
+      pendingBodyRef.current = tplContent;
       setBody(tplContent);
     }
   };
 
   const handleManualSave = () => {
-    onSaveBody(body);
+    const nextBody = editorRef.current?.innerHTML ?? pendingBodyRef.current;
+    pendingBodyRef.current = nextBody;
+    onSaveBody(nextBody);
+    lastSavedBodyRef.current = nextBody;
     setAutoSaveStatus("SAVED");
     setTimeout(() => setAutoSaveStatus("IDLE"), 2000);
   };
@@ -310,9 +324,11 @@ export default function DocumentEditor({
                 ref={editorRef}
                 contentEditable
                 suppressContentEditableWarning
-                onBlur={e => setBody(e.target.innerHTML)}
+                onInput={e => {
+                  pendingBodyRef.current = e.currentTarget.innerHTML;
+                  setBody(e.currentTarget.innerHTML);
+                }}
                 className="min-h-[64vh] focus:outline-hidden font-sans text-slate-800 leading-relaxed text-sm outline-hidden whitespace-pre-wrap break-words"
-                dangerouslySetInnerHTML={{ __html: body }}
                 placeholder="დაწერეთ დოკუმენტის შინაარსი ქართულად აქ..."
               ></div>
             )}

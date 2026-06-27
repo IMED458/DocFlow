@@ -158,6 +158,7 @@ export default function App() {
           body: `<p>გთხოვთ ჩაწეროთ დოკუმენტის ტექსტი აქ...</p>`,
           authorId: currentUser.id,
           departmentId: currentUser.departmentId,
+          signerId: currentUser.id,
           responsibleId: currentUser.id,
           pageCount: 1,
           attachmentCount: 0
@@ -191,6 +192,7 @@ export default function App() {
           ...newDoc,
           authorId: currentUser.id,
           departmentId: currentUser.departmentId,
+          signerId: currentUser.id,
           responsibleId: currentUser.id,
           pageCount: 1,
           attachmentCount: 0
@@ -265,6 +267,7 @@ export default function App() {
   // Counters for left side folder hierarchy
   const draftCount = documents.filter(d => d.status === DocumentStatus.DRAFT).length;
   const onVisaCount = documents.filter(d => d.status === DocumentStatus.ON_VISA).length;
+  const signingCount = documents.filter(d => d.status === DocumentStatus.SENT_TO_SIGN || d.signatureStatus === "PENDING").length;
   const signedCount = documents.filter(d => d.status === DocumentStatus.SIGNED).length;
   const overdueCount = documents.filter(d => d.status === DocumentStatus.OVERDUE).length;
 
@@ -432,10 +435,7 @@ export default function App() {
             </button>
 
             <button
-              onClick={() => {
-                setActiveTab("new");
-                setSelectedDocId(null);
-              }}
+              onClick={handleCreateDocumentDirectly}
               className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-xs font-sans font-semibold text-left transition text-slate-400 hover:bg-slate-800/40 hover:text-white"
             >
               <span className="flex items-center gap-2.5">
@@ -497,6 +497,17 @@ export default function App() {
               >
                 <span>ხელმოწერილი</span>
                 {signedCount > 0 && <span className="bg-emerald-950/40 text-emerald-400 font-mono text-[9px] px-1.5 py-0.5 rounded-md font-bold">{signedCount}</span>}
+              </button>
+
+              <button
+                onClick={() => {
+                  setListStatusFilter(DocumentStatus.SENT_TO_SIGN);
+                  setActiveTab("list");
+                }}
+                className="w-full flex items-center justify-between px-4 py-2 rounded-lg text-slate-400 hover:bg-slate-800/30 hover:text-white text-left transition font-sans"
+              >
+                <span>ხელმოსაწერი</span>
+                {signingCount > 0 && <span className="bg-indigo-950/40 text-indigo-300 font-mono text-[9px] px-1.5 py-0.5 rounded-md font-bold">{signingCount}</span>}
               </button>
             </div>
           </div>
@@ -599,7 +610,7 @@ export default function App() {
               {activeTab === "dashboard" && (
                 <Dashboard
                   documents={documents}
-                  onOpenNewDocument={() => setActiveTab("new")}
+                  onOpenNewDocument={handleCreateDocumentDirectly}
                   onFilterStatus={(st) => {
                     setListStatusFilter(st);
                     setActiveTab("list");
