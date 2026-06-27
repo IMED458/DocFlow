@@ -449,6 +449,13 @@ function filterDocuments(db: Db, documents: any[], url: URL, userId: string) {
     if (status && status !== "ALL" && doc.status !== status) return false;
     if (category && category !== "ALL" && doc.category !== category) return false;
     return true;
+  }).map((doc) => {
+    const pendingVisa = visaActionsFor(db, doc.id, "VISA").some((item: any) => item.userId === userId && item.status === "PENDING");
+    const pendingSign = visaActionsFor(db, doc.id, "SIGN").some((item: any) => item.userId === userId && item.status === "PENDING");
+    return {
+      ...doc,
+      quickAction: pendingVisa ? "VISA" : pendingSign ? "SIGN" : undefined,
+    };
   });
 }
 

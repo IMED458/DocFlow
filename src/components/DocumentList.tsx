@@ -13,7 +13,8 @@ import {
   AlertTriangle,
   Lock,
   RefreshCw,
-  FolderOpen
+  FolderOpen,
+  PenLine
 } from "lucide-react";
 import {
   Document,
@@ -36,6 +37,7 @@ interface DocumentListProps {
   onDeleteDraft: (id: string) => void;
   onDeleteDocument?: (id: string) => void;
   onRefresh: () => void;
+  currentUserId: string;
 }
 
 export default function DocumentList({
@@ -48,7 +50,8 @@ export default function DocumentList({
   onEditDocument,
   onDeleteDraft,
   onDeleteDocument,
-  onRefresh
+  onRefresh,
+  currentUserId
 }: DocumentListProps) {
   // Filters State
   const [showFilters, setShowFilters] = useState(false);
@@ -71,6 +74,7 @@ export default function DocumentList({
 
   // Selection
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [workingAction, setWorkingAction] = useState<string | null>(null);
 
   // Sorting helper
   const handleSort = (field: keyof Document) => {
@@ -208,6 +212,47 @@ export default function DocumentList({
 
   const getTypeLabel = (id: string) => {
     return documentTypes.find(typeItem => typeItem.id === id)?.label || GEORGIAN_DOCUMENT_TYPES[id as DocumentType] || id;
+  };
+
+  const runWorkflowAction = async (doc: Document, action: "visa" | "sign") => {
+    const actionKey = `${doc.id}-${action}`;
+    setWorkingAction(actionKey);
+    try {
+      const endpoint = action === "visa" ? `/api/documents/${doc.id}/visa/approve` : `/api/documents/${doc.id}/sign`;
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer jwt-mock-token-${currentUserId}`,
+        },
+        body: JSON.stringify({
+          userId: currentUserId,
+          comment: action === "visa" ? "დავიზებულია სიიდან" : "ხელმოწერილია სიიდან",
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        window.alert(err.message || "ქმედება ვერ შესრულდა.");
+        return;
+      }
+      onRefresh();
+    } catch (error) {
+      console.error(error);
+      window.alert("ქმედება ვერ შესრულდა. სცადეთ თავიდან.");
+    } finally {
+      setWorkingAction(null);
+    }
+  };
+
+  const quickActionFor = (doc: Document) => {
+    const quickAction = (doc as any).quickAction;
+    if (quickAction === "VISA") {
+      return { type: "visa" as const, label: "დავიზება", title: "დოკუმენტის ვიზირება" };
+    }
+    if (quickAction === "SIGN") {
+      return { type: "sign" as const, label: "ხელმოწერა", title: "დოკუმენტის ხელმოწერა" };
+    }
+    return null;
   };
 
   return (
@@ -417,8 +462,10 @@ export default function DocumentList({
                   </td>
                 </tr>
               ) : (
-                filtered.map(doc => (
-	                  <tr key={doc.id} onDoubleClick={() => onOpenDocument(doc.id)} className="hover:bg-sky-50 odd:bg-white even:bg-slate-50/70 transition group align-top border-b border-slate-100 cursor-pointer">
+	                filtered.map(doc => {
+                    const quickAction = quickActionFor(doc);
+                    return (
+		                  <tr key={doc.id} onDoubleClick={() => onOpenDocument(doc.id)} className="hover:bg-sky-50 odd:bg-white even:bg-slate-50/70 transition group align-top border-b border-slate-100 cursor-pointer">
                     {/* Checkbox */}
                     <td className="p-4 text-center">
                       <input
@@ -429,13 +476,32 @@ export default function DocumentList({
                       />
                     </td>
 
-                    {/* Status badge */}
-	                    <td className="p-3 text-xs font-semibold">
-	                      <div className="flex flex-col items-center gap-1.5">
-	                        <span className="text-slate-700">{GEORGIAN_CATEGORIES[doc.category] || doc.category}</span>
-	                        {renderStatusBadge(doc.status)}
-	                      </div>
-	                    </td>
+	                    {/* Status badge */}
+		                    <td className="p-3 text-xs font-semibold">
+		                      <div className="flex flex-col items-center gap-1.5">
+		                        <span className="text-slate-700">{GEORGIAN_CATEGORIES[doc.category] || doc.category}</span>
+		                        {renderStatusBadge(doc.status)}
+                            {quickAction && (
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  runWorkflowAction(doc, quickAction.type);
+                                }}
+                                disabled={workingAction === `${doc.id}-${quickAction.type}`}
+                                className={`mt-1 inline-flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-bold border transition disabled:opacity-50 ${
+                                  quickAction.type === "visa"
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                                    : "bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100"
+                                }`}
+                                title={quickAction.title}
+                              >
+                                <PenLine className="w-3 h-3" />
+                                {workingAction === `${doc.id}-${quickAction.type}` ? "..." : quickAction.label}
+                              </button>
+                            )}
+		                      </div>
+		                    </td>
 
                     {/* Category */}
 	                    <td className="p-3 font-sans text-xs font-semibold text-slate-800">
@@ -509,9 +575,10 @@ export default function DocumentList({
                         )}
                       </div>
                     </td>
-                  </tr>
-                ))
-              )}
+	                  </tr>
+                    );
+                  })
+	              )}
             </tbody>
           </table>
         </div>

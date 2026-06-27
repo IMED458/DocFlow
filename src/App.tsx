@@ -704,6 +704,7 @@ export default function App() {
                   onDeleteDraft={handleDeleteDraft}
                   onDeleteDocument={handleDeleteDocument}
                   onRefresh={() => loadInitialData(currentUser)}
+                  currentUserId={currentUser.id}
                 />
               )}
 
