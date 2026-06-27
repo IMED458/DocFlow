@@ -393,6 +393,18 @@ app.post("/api/documents", (req, res) => {
 
   data.documents.push(newDoc);
 
+  if (!data.document_recipients) data.document_recipients = [];
+  data.document_recipients.push({
+    id: "rec-" + Math.random().toString(36).substring(2, 9),
+    documentId: docId,
+    recipientType: "CHANCELLERY" as any,
+    recipientName: "კანცელარია",
+    recipientPosition: "საქმისწარმოების სამსახური",
+    deliveryMethod: "SYSTEM",
+    status: "PENDING",
+    createdAt: new Date().toISOString()
+  } as any);
+
   if (req.body.signerId) {
     newDoc.status = DocumentStatus.SENT_TO_SIGN;
     newDoc.signatureStatus = "PENDING";
@@ -877,9 +889,21 @@ app.post("/api/documents/:id/visa/approve", (req, res) => {
 
   const docIdx = data.documents.findIndex((d: any) => d.id === req.params.id);
   if (allApproved && docIdx !== -1) {
-    data.documents[docIdx].status = DocumentStatus.VISA_APPROVED;
+    data.documents[docIdx].status = DocumentStatus.SENT_TO_SIGN;
     data.documents[docIdx].visaStatus = "APPROVED";
-    createNotification(data.documents[docIdx].authorId, "დოკუმენტი დავიზებულია", `თქვენი დოკუმენტი ${data.documents[docIdx].subject} წარმატებით დავიზდა.`);
+    data.documents[docIdx].signatureStatus = "PENDING";
+    const authorId = data.documents[docIdx].authorId;
+    const existingSign = data.visa_actions.some((a: any) => a.documentId === req.params.id && a.userId === authorId && a.role === "SIGN" && a.status === VisaActionStatus.PENDING);
+    if (!existingSign) {
+      data.visa_actions.push({
+        id: "sign-act-" + Math.random().toString(36).substring(2, 9),
+        documentId: req.params.id,
+        userId: authorId,
+        role: "SIGN",
+        status: VisaActionStatus.PENDING
+      });
+    }
+    createNotification(authorId, "დოკუმენტი დავიზებულია", `დოკუმენტი ${data.documents[docIdx].subject} დავიზდა და დაბრუნდა ხელმოსაწერად.`);
   }
 
   saveDb(data);
@@ -945,17 +969,25 @@ app.post("/api/documents/:id/signature/request", (req, res) => {
   const idx = data.documents.findIndex((d: Document) => d.id === req.params.id);
   if (idx === -1) return res.status(404).json({ message: "დოკუმენტი ვერ მოიძებნა" });
 
+  const targetSignerId = signerId || data.documents[idx].authorId;
   data.documents[idx].status = DocumentStatus.SENT_TO_SIGN;
+  data.documents[idx].signatureStatus = "PENDING";
+
+  const existingSign = data.visa_actions.find((a: any) => a.documentId === req.params.id && a.userId === targetSignerId && a.role === "SIGN" && a.status === VisaActionStatus.PENDING);
+  if (existingSign) {
+    saveDb(data);
+    return res.json(data.documents[idx]);
+  }
 
   const act: VisaAction = {
     id: "visa-act-" + Math.random().toString(36).substring(2, 9),
     documentId: req.params.id,
-    userId: signerId,
+    userId: targetSignerId,
     role: "SIGN",
     status: VisaActionStatus.PENDING
   };
   data.visa_actions.push(act);
-  createNotification(signerId, "ხელმოწერის მოთხოვნა", `დოკუმენტი ${data.documents[idx].subject} გადმოგეცათ ხელმოსაწერად.`);
+  createNotification(targetSignerId, "ხელმოწერის მოთხოვნა", `დოკუმენტი ${data.documents[idx].subject} გადმოგეცათ ხელმოსაწერად.`);
 
   saveDb(data);
   res.json(data.documents[idx]);

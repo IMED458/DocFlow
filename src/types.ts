@@ -125,6 +125,13 @@ export interface Document {
   sender?: string; // external sender for incoming
   recipient?: string; // external recipient for outgoing
   authorId: string;
+  authors?: Array<{
+    id: string;
+    name: string;
+    position?: string;
+    userId?: string;
+    type: "INTERNAL" | "EXTERNAL";
+  }>;
   departmentId: string;
   responsibleId?: string;
   deadline?: string;

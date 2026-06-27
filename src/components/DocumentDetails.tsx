@@ -121,6 +121,11 @@ export default function DocumentDetails({
   const [manualRecipientName, setManualRecipientName] = useState("");
   const [manualRecipientPosition, setManualRecipientPosition] = useState("");
 
+  // Authors input
+  const [selectedAuthorId, setSelectedAuthorId] = useState("");
+  const [manualAuthorName, setManualAuthorName] = useState("");
+  const [manualAuthorPosition, setManualAuthorPosition] = useState("");
+
   // Basis search
   const [basisQuery, setBasisQuery] = useState("");
   const [basisSearchResults, setBasisSearchResults] = useState<any[]>([]);
@@ -247,6 +252,87 @@ export default function DocumentDetails({
           "Authorization": `Bearer jwt-mock-token-${currentUser.id}`
         },
         body: JSON.stringify({ ...fields, updatedBy: currentUser.id })
+      });
+      if (res.ok) {
+        loadDetails();
+        onRefresh();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleAddAuthor = async () => {
+    if (!selectedAuthorId && !manualAuthorName.trim()) return;
+    const employee = users.find(u => u.id === selectedAuthorId);
+    const existingAuthors = doc.authors || [{
+      id: `author-${doc.authorId}`,
+      userId: doc.authorId,
+      name: getUserName(doc.authorId),
+      position: getUserPositionAndDept(doc.authorId),
+      type: "INTERNAL" as const
+    }];
+    const nextAuthor = employee ? {
+      id: `author-${employee.id}`,
+      userId: employee.id,
+      name: `${employee.firstName} ${employee.lastName}`,
+      position: employee.positionName || GEORGIAN_ROLES[employee.role],
+      type: "INTERNAL" as const
+    } : {
+      id: `author-manual-${Date.now()}`,
+      name: manualAuthorName.trim(),
+      position: manualAuthorPosition.trim(),
+      type: "EXTERNAL" as const
+    };
+
+    const deduped = existingAuthors.some(author => author.id === nextAuthor.id || (nextAuthor.userId && author.userId === nextAuthor.userId))
+      ? existingAuthors
+      : [...existingAuthors, nextAuthor];
+
+    await handleSaveMetadata({
+      authors: deduped,
+      authorId: nextAuthor.userId || doc.authorId
+    });
+    setSelectedAuthorId("");
+    setManualAuthorName("");
+    setManualAuthorPosition("");
+  };
+
+  const handleRemoveAuthor = async (authorId: string) => {
+    const currentAuthors = doc.authors || [{
+      id: `author-${doc.authorId}`,
+      userId: doc.authorId,
+      name: getUserName(doc.authorId),
+      position: getUserPositionAndDept(doc.authorId),
+      type: "INTERNAL" as const
+    }];
+    const remaining = currentAuthors.filter(author => author.id !== authorId);
+    const fallback = remaining.find(author => author.userId)?.userId || doc.authorId;
+    await handleSaveMetadata({ authors: remaining, authorId: fallback });
+  };
+
+  const handleSaveAsDraft = async () => {
+    await handleSaveMetadata({ status: DocumentStatus.DRAFT });
+  };
+
+  const handleSaveAndForward = async () => {
+    if (selectedVisaUsers.length > 0) {
+      await handleSendToVisa();
+      return;
+    }
+    if (doc.status === DocumentStatus.DRAFT && (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CHANCELLERY)) {
+      await handleRegister();
+      return;
+    }
+    setSelectedSigner(selectedSigner || doc.authorId);
+    try {
+      const res = await fetch(`/api/documents/${doc.id}/signature/request`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer jwt-mock-token-${currentUser.id}`
+        },
+        body: JSON.stringify({ signerId: selectedSigner || doc.authorId, userId: currentUser.id })
       });
       if (res.ok) {
         loadDetails();
@@ -635,6 +721,15 @@ export default function DocumentDetails({
   const printDate = doc.registrationDate || doc.documentDate || new Date().toISOString().split("T")[0];
   const formattedPrintDate = printDate.split("-").reverse().join("/");
   const printNumber = doc.documentNumber || "პროექტი";
+  const documentAuthors = doc.authors && doc.authors.length > 0 ? doc.authors : [{
+    id: `author-${doc.authorId}`,
+    userId: doc.authorId,
+    name: getUserName(doc.authorId),
+    position: getUserPositionAndDept(doc.authorId),
+    type: "INTERNAL" as const
+  }];
+  const canEditWorkflow = doc.status !== DocumentStatus.SIGNED && doc.status !== DocumentStatus.CANCELLED;
+  const employeeUsers = users;
 
   return (
     <div className="space-y-6">
@@ -776,6 +871,27 @@ export default function DocumentDetails({
                     }}
                   />
                 </div>
+
+                {canEditWorkflow && (
+                  <div className="flex flex-wrap items-center gap-3 pt-4 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={handleSaveAndForward}
+                      className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-800 hover:bg-emerald-100 transition"
+                    >
+                      <Send className="w-4 h-4" />
+                      შენახვა და გადაგზავნა
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSaveAsDraft}
+                      className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 transition"
+                    >
+                      <FileText className="w-4 h-4" />
+                      როგორც დრაფტი
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               /* A4 Printable Sheet Display */
@@ -885,14 +1001,14 @@ export default function DocumentDetails({
           </div>
         </div>
 
-        {/* RIGHT PANEL: Vertical stack of beautiful collapsible widgets */}
-        <div className="space-y-4">
+	        {/* RIGHT PANEL: Vertical stack of operational widgets */}
+	        <div className="space-y-3">
           
           {/* Section 1: დოკუმენტის მონაცემები */}
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-xs overflow-hidden">
+	          <div className="bg-sky-50 border border-sky-200 shadow-xs overflow-hidden">
             <button
               onClick={() => toggleSection("meta")}
-              className="w-full px-4 py-3.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-xs font-bold text-slate-800 font-sans"
+	              className="w-full px-4 py-3 bg-gradient-to-b from-sky-100 to-slate-100 border-b border-sky-200 flex items-center justify-between text-xs font-bold text-sky-950 font-sans"
             >
               <span className="flex items-center gap-1.5"><Hash className="w-4 h-4 text-indigo-500" /> დოკუმენტის მონაცემები</span>
               {openSections.meta ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -984,42 +1100,69 @@ export default function DocumentDetails({
           </div>
 
           {/* Section 2: ავტორები (Authors) - ANY Employee is assignable */}
-          <div className="bg-white rounded-2xl border border-slate-100 shadow-xs overflow-hidden">
+	          <div className="bg-sky-50 border border-sky-200 shadow-xs overflow-hidden">
             <button
               onClick={() => toggleSection("authors")}
-              className="w-full px-4 py-3.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-xs font-bold text-slate-800 font-sans"
+	              className="w-full px-4 py-3 bg-gradient-to-b from-sky-100 to-slate-100 border-b border-sky-200 flex items-center justify-between text-xs font-bold text-sky-950 font-sans"
             >
               <span className="flex items-center gap-1.5"><Users className="w-4 h-4 text-indigo-500" /> დოკუმენტის ავტორი</span>
               {openSections.authors ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </button>
-            {openSections.authors && (
-              <div className="p-4 space-y-3.5">
-                {doc.status === DocumentStatus.DRAFT ? (
-                  <div className="space-y-1.5">
-                    <label className="text-xxs font-bold text-slate-400 uppercase tracking-wider block font-sans">
-                      აირჩიეთ ნებისმიერი ავტორი:
-                    </label>
-                    <select
-                      value={doc.authorId}
-                      onChange={e => handleSaveMetadata({ authorId: e.target.value })}
-                      className="w-full border border-slate-200 rounded-lg p-2 bg-white text-xs font-sans focus:outline-hidden"
-                    >
-                      {users.map(u => (
-                        <option key={u.id} value={u.id}>
-                          {u.firstName} {u.lastName} ({u.positionName || GEORGIAN_ROLES[u.role]})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                ) : (
-                  <div className="space-y-1 text-xs font-sans">
-                    <span className="font-bold text-slate-800 block">{getUserName(doc.authorId)}</span>
-                    <span className="text-slate-400 block text-xxs font-semibold">{getUserPositionAndDept(doc.authorId)}</span>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+	            {openSections.authors && (
+	              <div className="p-4 space-y-3.5 bg-white">
+	                {canEditWorkflow && (
+	                  <div className="space-y-2">
+	                    <select
+	                      value={selectedAuthorId}
+	                      onChange={e => setSelectedAuthorId(e.target.value)}
+	                      className="w-full border border-slate-200 rounded-lg p-2 bg-white text-xs font-sans focus:outline-hidden"
+	                    >
+	                      <option value="">თანამშრომლის არჩევა...</option>
+	                      {users.map(u => (
+	                        <option key={u.id} value={u.id}>
+	                          {u.firstName} {u.lastName} ({u.positionName || GEORGIAN_ROLES[u.role]})
+	                        </option>
+	                      ))}
+	                    </select>
+	                    <input
+	                      value={manualAuthorName}
+	                      onChange={e => setManualAuthorName(e.target.value)}
+	                      placeholder="სხვა ავტორი: სახელი და გვარი"
+	                      className="w-full border border-slate-200 rounded-lg p-2 text-xs font-sans focus:outline-hidden"
+	                    />
+	                    <input
+	                      value={manualAuthorPosition}
+	                      onChange={e => setManualAuthorPosition(e.target.value)}
+	                      placeholder="თანამდებობა / ორგანიზაცია"
+	                      className="w-full border border-slate-200 rounded-lg p-2 text-xs font-sans focus:outline-hidden"
+	                    />
+	                    <button
+	                      type="button"
+	                      onClick={handleAddAuthor}
+	                      className="w-full bg-slate-900 hover:bg-slate-800 text-white text-xs font-sans font-semibold py-2 rounded-lg transition"
+	                    >
+	                      ავტორის დამატება
+	                    </button>
+	                  </div>
+	                )}
+	                <div className="space-y-1.5 text-xs font-sans">
+	                  {documentAuthors.map(author => (
+	                    <div key={author.id} className="p-2 bg-slate-50 border border-slate-100 rounded-lg flex items-start justify-between gap-2">
+	                      <div>
+	                        <span className="font-bold text-slate-800 block">{author.name}</span>
+	                        <span className="text-slate-400 block text-xxs font-semibold">{author.position || "ავტორი"}</span>
+	                      </div>
+	                      {canEditWorkflow && documentAuthors.length > 1 && (
+	                        <button onClick={() => handleRemoveAuthor(author.id)} className="text-rose-500 text-xxs font-bold hover:underline">
+	                          წაშლა
+	                        </button>
+	                      )}
+	                    </div>
+	                  ))}
+	                </div>
+	              </div>
+	            )}
+	          </div>
 
           {/* Section 3: ხელმომწერები (Signers) */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-xs overflow-hidden">
@@ -1046,12 +1189,12 @@ export default function DocumentDetails({
                 )}
 
                 {/* Send to sign panel */}
-                {doc.status === DocumentStatus.VISA_APPROVED && (
-                  <div className="space-y-2.5">
-                    <label className="text-xxs font-bold text-slate-400 block font-sans">გაგზავნეთ ნებისმიერ პირთან:</label>
-                    <select
-                      value={selectedSigner}
-                      onChange={e => setSelectedSigner(e.target.value)}
+	                {canEditWorkflow && !visaHistory.some(h => h.role === "SIGN" && h.status === VisaActionStatus.PENDING) && (
+	                  <div className="space-y-2.5">
+	                    <label className="text-xxs font-bold text-slate-400 block font-sans">ხელმოსაწერად გაგზავნა:</label>
+	                    <select
+	                      value={selectedSigner}
+	                      onChange={e => setSelectedSigner(e.target.value)}
                       className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-sans focus:outline-hidden"
                     >
                       <option value="">აირჩიეთ ხელმომწერი...</option>
@@ -1131,13 +1274,13 @@ export default function DocumentDetails({
                 )}
 
                 {/* Send to visa checklist */}
-                {doc.status === DocumentStatus.REGISTERED && (
-                  <div className="space-y-2.5">
-                    <label className="text-xxs font-bold text-slate-400 block font-sans">აირჩიეთ ნებისმიერი თანამშრომელი:</label>
-                    <div className="border border-slate-200 rounded-lg p-2 h-28 overflow-y-auto space-y-1 bg-white">
-                      {users.map(u => (
-                        <label key={u.id} className="flex items-center gap-2 text-xxs font-sans cursor-pointer text-slate-700 hover:text-slate-900">
-                          <input
+	                {canEditWorkflow && !visaHistory.some(h => h.role === "VISA" && h.status === VisaActionStatus.PENDING) && (
+	                  <div className="space-y-2.5">
+	                    <label className="text-xxs font-bold text-slate-400 block font-sans">ვიზირებაში მონაწილე თანამშრომლები:</label>
+	                    <div className="border border-slate-200 rounded-lg p-2 h-28 overflow-y-auto space-y-1 bg-white">
+	                      {employeeUsers.map(u => (
+	                        <label key={u.id} className="flex items-center gap-2 text-xxs font-sans cursor-pointer text-slate-700 hover:text-slate-900">
+	                          <input
                             type="checkbox"
                             checked={selectedVisaUsers.includes(u.id)}
                             onChange={e => {

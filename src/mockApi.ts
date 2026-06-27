@@ -177,6 +177,16 @@ async function handleApi(request: Request, init?: RequestInit) {
         updatedAt: now,
       };
       db.documents.unshift(created);
+      db.document_recipients.push({
+        id: nextId("rec"),
+        documentId: created.id,
+        recipientType: "CHANCELLERY",
+        recipientName: "კანცელარია",
+        recipientPosition: "საქმისწარმოების სამსახური",
+        deliveryMethod: "SYSTEM",
+        status: "PENDING",
+        createdAt: now,
+      });
       if (body.signerId) {
         created.status = "SENT_TO_SIGN";
         created.signatureStatus = "PENDING";
@@ -245,19 +255,41 @@ async function handleApi(request: Request, init?: RequestInit) {
         action.status = parts[3] === "approve" ? "APPROVED" : parts[3] === "return" ? "RETURNED" : "REJECTED";
         action.actionDate = new Date().toISOString();
       }
-      doc.status = parts[3] === "approve" ? "VISA_APPROVED" : parts[3] === "return" ? "VISA_RETURNED" : "REJECTED";
+      const allVisaApproved = db.visa_actions
+        .filter((item) => item.documentId === docId && item.role === "VISA")
+        .every((item) => item.status === "APPROVED");
+      doc.status = parts[3] === "approve" && allVisaApproved ? "SENT_TO_SIGN" : parts[3] === "approve" ? "SENT_TO_VISA" : parts[3] === "return" ? "VISA_RETURNED" : "REJECTED";
       doc.visaStatus = parts[3] === "approve" ? "APPROVED" : parts[3] === "return" ? "RETURNED" : "REJECTED";
+      if (parts[3] === "approve" && allVisaApproved) {
+        doc.signatureStatus = "PENDING";
+        const hasAuthorSign = db.visa_actions.some((item) => item.documentId === docId && item.userId === doc.authorId && item.role === "SIGN" && item.status === "PENDING");
+        if (!hasAuthorSign) {
+          db.visa_actions.push({
+            id: nextId("sign-act"),
+            documentId: docId,
+            userId: doc.authorId,
+            role: "SIGN",
+            status: "PENDING",
+          });
+        }
+      }
       writeDb(db);
       return json(doc);
     }
     if (method === "POST" && parts[2] === "signature" && parts[3] === "request") {
       const body = await readBody(init);
+      const targetSignerId = body.signerId || doc.authorId;
       doc.status = "SENT_TO_SIGN";
       doc.signatureStatus = "PENDING";
+      const hasPending = db.visa_actions.some((item) => item.documentId === docId && item.userId === targetSignerId && item.role === "SIGN" && item.status === "PENDING");
+      if (hasPending) {
+        writeDb(db);
+        return json(doc);
+      }
       db.visa_actions.push({
         id: nextId("sign-act"),
         documentId: docId,
-        userId: body.signerId,
+        userId: targetSignerId,
         role: "SIGN",
         status: "PENDING",
       });
