@@ -263,9 +263,9 @@ async function handleApi(request: Request, init?: RequestInit) {
 
   if (parts[0] === "auth" && parts[1] === "login" && method === "POST") {
     const body = await readBody(init);
-    const login = String(body.username ?? body.email ?? "").trim();
+    const login = String(body.username ?? "").trim().toLowerCase();
     const user = db.users.find(
-      (u) => (u.username === login || u.email === login) && (!u.password || u.password === body.password)
+      (u) => String(u.username || "").trim().toLowerCase() === login && (!u.password || u.password === body.password)
     );
     if (!user) return json({ message: "არასწორი მომხმარებელი ან პაროლი" }, { status: 401 });
     return json({ token: `jwt-mock-token-${user.id}`, user });

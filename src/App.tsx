@@ -122,6 +122,10 @@ export default function App() {
   const handleStandardLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError("");
+    if (loginUsername.includes("@")) {
+      setLoginError("შესვლა შესაძლებელია მხოლოდ მომხმარებლის სახელით, არა ელ-ფოსტით.");
+      return;
+    }
     try {
       const res = await fetch("/api/auth/login", {
         method: "POST",
@@ -338,7 +342,7 @@ export default function App() {
                   <input
                     type="text"
                     autoComplete="username"
-                    placeholder="მომხმარებლის სახელი"
+                    placeholder="მომხმარებლის სახელი, მაგ: admin"
                     value={loginUsername}
                     onChange={e => setLoginUsername(e.target.value)}
                     required

@@ -179,12 +179,12 @@ function assignInternalNumber(data: any, doc: Document) {
 
 // API Auth routes
 app.post("/api/auth/login", (req, res) => {
-  const { username, email, password } = req.body;
-  const login = (username ?? email ?? "").trim();
+  const { username, password } = req.body;
+  const login = String(username ?? "").trim().toLowerCase();
   const data = getDb();
-  // შესვლა მომხმარებლის სახელით (ან, უკუთავსებადობისთვის, ელ-ფოსტითაც).
+  // შესვლა მხოლოდ მომხმარებლის სახელით.
   const user = data.users.find(
-    (u: User) => (u.username === login || u.email === login) && u.password === password
+    (u: User) => String(u.username || "").trim().toLowerCase() === login && u.password === password
   );
   if (!user) {
     return res.status(401).json({ message: "არასწორი მომხმარებელი ან პაროლი" });
