@@ -29,6 +29,7 @@ interface DocumentListProps {
   documents: Document[];
   users: any[];
   departments: any[];
+  documentTypes?: any[];
   onOpenDocument: (id: string) => void;
   onEditDocument: (id: string) => void;
   onDeleteDraft: (id: string) => void;
@@ -39,6 +40,7 @@ export default function DocumentList({
   documents,
   users,
   departments,
+  documentTypes = [],
   onOpenDocument,
   onEditDocument,
   onDeleteDraft,
@@ -196,6 +198,10 @@ export default function DocumentList({
     return u ? `${u.firstName} ${u.lastName}` : "უცნობი";
   };
 
+  const getTypeLabel = (id: string) => {
+    return documentTypes.find(typeItem => typeItem.id === id)?.label || GEORGIAN_DOCUMENT_TYPES[id as DocumentType] || id;
+  };
+
   return (
     <div className="space-y-4">
       {/* Search and Toggle Filters */}
@@ -246,8 +252,11 @@ export default function DocumentList({
             >
               <option value="ALL">ყველა</option>
               {Object.entries(GEORGIAN_CATEGORIES).map(([k, v]) => (
-                <option key={k} value={k}>{v}</option>
-              ))}
+	                <option key={k} value={k}>{v}</option>
+	              ))}
+	              {documentTypes.filter(item => !GEORGIAN_DOCUMENT_TYPES[item.id as DocumentType]).map(item => (
+	                <option key={item.id} value={item.id}>{item.label}</option>
+	              ))}
             </select>
           </div>
 
@@ -389,7 +398,7 @@ export default function DocumentList({
                 </tr>
               ) : (
                 filtered.map(doc => (
-	                  <tr key={doc.id} className="hover:bg-sky-50 odd:bg-white even:bg-slate-50/70 transition group align-top border-b border-slate-100">
+	                  <tr key={doc.id} onDoubleClick={() => onOpenDocument(doc.id)} className="hover:bg-sky-50 odd:bg-white even:bg-slate-50/70 transition group align-top border-b border-slate-100 cursor-pointer">
                     {/* Checkbox */}
                     <td className="p-4 text-center">
                       <input
@@ -405,7 +414,7 @@ export default function DocumentList({
 
                     {/* Category */}
 	                    <td className="p-3 font-sans text-xs font-semibold text-slate-800">
-	                      {GEORGIAN_DOCUMENT_TYPES[doc.documentType] || doc.documentType}
+	                      {getTypeLabel(doc.documentType)}
 	                      <span className="block text-slate-400 mt-1">{GEORGIAN_DOCUMENT_STATUSES[doc.status] || doc.status}</span>
 	                    </td>
 

@@ -6,8 +6,14 @@ import {
   AlignLeft,
   AlignCenter,
   AlignRight,
+  AlignJustify,
   List,
   ListOrdered,
+  Table,
+  Heading1,
+  Heading2,
+  Link as LinkIcon,
+  Minus,
   RotateCcw,
   RotateCw,
   Save,
@@ -135,14 +141,23 @@ export default function DocumentEditor({
     setTimeout(() => setAutoSaveStatus("IDLE"), 2000);
   };
 
+  const insertTable = () => {
+    execCommand("insertHTML", "<table style=\"width:100%;border-collapse:collapse;margin:12px 0\"><tbody><tr><td style=\"border:1px solid #94a3b8;padding:8px\"> </td><td style=\"border:1px solid #94a3b8;padding:8px\"> </td></tr><tr><td style=\"border:1px solid #94a3b8;padding:8px\"> </td><td style=\"border:1px solid #94a3b8;padding:8px\"> </td></tr></tbody></table><p></p>");
+  };
+
+  const insertLink = () => {
+    const url = window.prompt("ბმულის მისამართი");
+    if (url) execCommand("createLink", url);
+  };
+
   return (
     <div className="bg-white rounded-2xl border border-slate-100 shadow-xs flex flex-col min-h-[75vh] overflow-hidden">
       {/* Editor Toolbar */}
       <div className="bg-slate-50 border-b border-slate-100 p-3 flex flex-wrap items-center justify-between gap-2 z-10">
         <div className="flex items-center flex-wrap gap-1">
           {/* Style Controls */}
-          <button
-            type="button"
+	          <button
+	            type="button"
             disabled={isReadOnly}
             onClick={() => execCommand("bold")}
             className="p-1.5 hover:bg-slate-200 text-slate-700 rounded-lg transition disabled:opacity-40"
@@ -196,14 +211,35 @@ export default function DocumentEditor({
             onClick={() => execCommand("justifyRight")}
             className="p-1.5 hover:bg-slate-200 text-slate-700 rounded-lg transition disabled:opacity-40"
             title="მარჯვნივ სწორება"
-          >
-            <AlignRight className="w-4 h-4" />
-          </button>
+	          >
+	            <AlignRight className="w-4 h-4" />
+	          </button>
+	          <button
+	            type="button"
+	            disabled={isReadOnly}
+	            onClick={() => execCommand("justifyFull")}
+	            className="p-1.5 hover:bg-slate-200 text-slate-700 rounded-lg transition disabled:opacity-40"
+	            title="ორივე მხარეს სწორება"
+	          >
+	            <AlignJustify className="w-4 h-4" />
+	          </button>
 
-          <span className="w-px h-5 bg-slate-200 mx-1"></span>
+	          <span className="w-px h-5 bg-slate-200 mx-1"></span>
+
+	          <button type="button" disabled={isReadOnly} onClick={() => execCommand("formatBlock", "h1")} className="p-1.5 hover:bg-slate-200 text-slate-700 rounded-lg transition disabled:opacity-40" title="სათაური 1">
+	            <Heading1 className="w-4 h-4" />
+	          </button>
+	          <button type="button" disabled={isReadOnly} onClick={() => execCommand("formatBlock", "h2")} className="p-1.5 hover:bg-slate-200 text-slate-700 rounded-lg transition disabled:opacity-40" title="სათაური 2">
+	            <Heading2 className="w-4 h-4" />
+	          </button>
+	          <button type="button" disabled={isReadOnly} onClick={() => execCommand("formatBlock", "p")} className="px-2 py-1.5 hover:bg-slate-200 text-slate-700 rounded-lg transition disabled:opacity-40 text-xs font-bold" title="პარაგრაფი">
+	            P
+	          </button>
+
+	          <span className="w-px h-5 bg-slate-200 mx-1"></span>
 
           {/* Lists */}
-          <button
+	          <button
             type="button"
             disabled={isReadOnly}
             onClick={() => execCommand("insertUnorderedList")}
@@ -219,8 +255,17 @@ export default function DocumentEditor({
             className="p-1.5 hover:bg-slate-200 text-slate-700 rounded-lg transition disabled:opacity-40"
             title="დანომრილი სია"
           >
-            <ListOrdered className="w-4 h-4" />
-          </button>
+	            <ListOrdered className="w-4 h-4" />
+	          </button>
+	          <button type="button" disabled={isReadOnly} onClick={insertTable} className="p-1.5 hover:bg-slate-200 text-slate-700 rounded-lg transition disabled:opacity-40" title="ცხრილის ჩასმა">
+	            <Table className="w-4 h-4" />
+	          </button>
+	          <button type="button" disabled={isReadOnly} onClick={() => execCommand("insertHorizontalRule")} className="p-1.5 hover:bg-slate-200 text-slate-700 rounded-lg transition disabled:opacity-40" title="გამყოფი ხაზი">
+	            <Minus className="w-4 h-4" />
+	          </button>
+	          <button type="button" disabled={isReadOnly} onClick={insertLink} className="p-1.5 hover:bg-slate-200 text-slate-700 rounded-lg transition disabled:opacity-40" title="ბმული">
+	            <LinkIcon className="w-4 h-4" />
+	          </button>
 
           <span className="w-px h-5 bg-slate-200 mx-1"></span>
 

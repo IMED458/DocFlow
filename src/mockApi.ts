@@ -3,6 +3,18 @@ import seedDb from "../db.json";
 type Db = Record<string, any[]>;
 
 const STORAGE_KEY = "docflow-georgia-static-db";
+const defaultDocumentTypes = [
+  { id: "LETTER", label: "წერილი", isActive: true },
+  { id: "REQUEST", label: "მოთხოვნა", isActive: true },
+  { id: "APPLICATION", label: "განცხადება", isActive: true },
+  { id: "ORDER", label: "ბრძანება", isActive: true },
+  { id: "MEMO", label: "მოხსენებითი ბარათი", isActive: true },
+  { id: "REPORT", label: "ანგარიში", isActive: true },
+  { id: "CERTIFICATE", label: "ცნობა", isActive: true },
+  { id: "CONTRACT", label: "ხელშეკრულება", isActive: true },
+  { id: "RESOLUTION", label: "რეზოლუცია", isActive: true },
+  { id: "OTHER", label: "სხვა", isActive: true },
+];
 
 const collectionByApiName: Record<string, string> = {
   organizations: "organizations",
@@ -18,6 +30,7 @@ const collectionByApiName: Record<string, string> = {
   stamps: "stamps",
   "header-footer-templates": "header_footer_templates",
   "external-resolutions": "external_resolutions",
+  "document-types": "document_types",
 };
 
 function shouldUseMockApi() {
@@ -27,11 +40,19 @@ function shouldUseMockApi() {
 function readDb(): Db {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (!parsed.document_types) {
+        parsed.document_types = defaultDocumentTypes;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+      }
+      return parsed;
+    }
   } catch {
     localStorage.removeItem(STORAGE_KEY);
   }
   const fresh = structuredClone(seedDb) as Db;
+  fresh.document_types = fresh.document_types || defaultDocumentTypes;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(fresh));
   return fresh;
 }
@@ -321,10 +342,14 @@ async function handleApi(request: Request, init?: RequestInit) {
         "send-to-visa": "ON_VISA",
         "visa-action": "VISA_APPROVED",
         "request-signature": "SENT_TO_SIGN",
-        sign: "SIGNED",
+        sign: "COMPLETED",
       };
       if (parts[2] === "send" || parts[2] === "register") assignDocumentNumber(db, doc);
-      if (parts[2] === "sign") doc.signedById = userId;
+      if (parts[2] === "sign") {
+        doc.signedById = userId;
+        doc.signedAt = new Date().toISOString();
+        doc.signatureStatus = "SIGNED";
+      }
       doc.status = statusByAction[parts[2]] || doc.status;
       doc.updatedAt = new Date().toISOString();
       writeDb(db);

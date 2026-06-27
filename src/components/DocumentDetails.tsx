@@ -732,9 +732,10 @@ export default function DocumentDetails({
     position: getUserPositionAndDept(doc.authorId),
     type: "INTERNAL" as const
   }];
-  const canEditWorkflow = doc.status !== DocumentStatus.SIGNED && doc.status !== DocumentStatus.CANCELLED;
+  const canEditWorkflow = doc.status !== DocumentStatus.SIGNED && doc.status !== DocumentStatus.COMPLETED && doc.status !== DocumentStatus.CANCELLED;
   const employeeUsers = users;
   const canCancelDocument = [UserRole.ADMIN, UserRole.MANAGER, UserRole.SIGNER].includes(currentUser.role);
+  const isSignedDocument = doc.signatureStatus === "SIGNED" || doc.status === DocumentStatus.SIGNED || doc.status === DocumentStatus.COMPLETED;
 
   return (
     <div className="space-y-6">
@@ -870,7 +871,7 @@ export default function DocumentDetails({
                     document={doc}
                     onSaveBody={handleSaveBody}
                     versions={versions}
-                    isReadOnly={doc.status === DocumentStatus.SIGNED || doc.status === DocumentStatus.CANCELLED}
+	                    isReadOnly={isSignedDocument || doc.status === DocumentStatus.CANCELLED}
                     onRollback={async (ver) => {
                       await handleSaveBody(ver.body);
                     }}
@@ -905,7 +906,7 @@ export default function DocumentDetails({
                   <div className="flex-1">
                     <div className="official-letterhead">
                       {defaultTemplate?.headerImage ? (
-                        <img src={defaultTemplate.headerImage} className="block w-full max-h-[48mm] object-contain object-center" alt="Header" />
+	                        <img src={defaultTemplate.headerImage} className="block w-full max-h-[40mm] object-contain object-center" alt="Header" />
                       ) : (
                         <div className="grid grid-cols-[1fr_28mm_1fr] items-center gap-8 min-h-[42mm]">
                           <div className="text-center text-[13px] leading-5 font-bold">
@@ -931,7 +932,7 @@ export default function DocumentDetails({
                       <span></span>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-8 mt-9 items-start">
+	                    <div className="grid grid-cols-2 gap-8 mt-4 items-start">
                       <div className="text-[19px] leading-none">
                         {formattedPrintDate}
                       </div>
@@ -966,7 +967,7 @@ export default function DocumentDetails({
                       </div>
 
 	                      <div className="h-[32mm] flex items-center justify-center">
-	                        {doc.status === DocumentStatus.SIGNED && defaultStamp?.imageUrl && (
+	                        {isSignedDocument && defaultStamp?.imageUrl && (
 	                          <img
 	                            src={defaultStamp.imageUrl}
 	                            alt="ბეჭედი"
@@ -976,7 +977,7 @@ export default function DocumentDetails({
 	                      </div>
 
 	                      <div className="relative w-[78mm] h-[28mm] flex items-center justify-center">
-                        {doc.status === DocumentStatus.SIGNED && users.find(u => u.id === signerId)?.signatureImage && (
+	                        {isSignedDocument && users.find(u => u.id === signerId)?.signatureImage && (
                           <img
                             src={users.find(u => u.id === signerId)?.signatureImage}
                             alt="ხელმოწერა"
@@ -984,7 +985,7 @@ export default function DocumentDetails({
                           />
                         )}
 
-                        {doc.status !== DocumentStatus.SIGNED && (
+	                        {!isSignedDocument && (
                           <span className="text-xs font-sans text-slate-400 border-b border-slate-300 px-10 py-1">
                             ხელმოწერის ადგილი
                           </span>

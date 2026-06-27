@@ -45,6 +45,7 @@ export default function App() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
+  const [documentTypes, setDocumentTypes] = useState<any[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotificationDropdown, setShowNotificationDropdown] = useState(false);
 
@@ -62,7 +63,7 @@ export default function App() {
     subject: "",
     description: "",
     category: DocumentCategory.INTERNAL,
-    documentType: DocumentType.MEMO,
+	          documentType: documentTypes[0]?.id || DocumentType.MEMO,
     priority: "NORMAL",
     confidentiality: "PUBLIC",
     sender: "",
@@ -79,17 +80,19 @@ export default function App() {
   const loadInitialData = async (userObj: User) => {
     try {
       const headers = { "Authorization": `Bearer jwt-mock-token-${userObj.id}` };
-      const [resDocs, resUsers, resDepts, resNotifs] = await Promise.all([
+      const [resDocs, resUsers, resDepts, resNotifs, resDocTypes] = await Promise.all([
         fetch("/api/documents", { headers }).then(r => r.json()),
         fetch("/api/users", { headers }).then(r => r.json()),
         fetch("/api/departments", { headers }).then(r => r.json()),
-        fetch("/api/notifications", { headers }).then(r => r.json())
+        fetch("/api/notifications", { headers }).then(r => r.json()),
+        fetch("/api/admin/document-types", { headers }).then(r => r.json())
       ]);
 
       setDocuments(resDocs);
       setUsers(resUsers);
       setDepartments(resDepts);
       setNotifications(resNotifs);
+      setDocumentTypes(resDocTypes || []);
     } catch (e) {
       console.error("Failed to load initial workspace data", e);
     }
@@ -159,7 +162,7 @@ export default function App() {
           subject: "ახალი დოკუმენტი",
           description: "ახალი დოკუმენტის პროექტი",
           category: DocumentCategory.INTERNAL,
-          documentType: DocumentType.MEMO,
+	          documentType: documentTypes[0]?.id || DocumentType.MEMO,
           priority: "NORMAL",
           confidentiality: "PUBLIC",
           sender: "სამინისტროს შიდა აპარატი",
@@ -215,7 +218,7 @@ export default function App() {
           subject: "",
           description: "",
           category: DocumentCategory.INTERNAL,
-          documentType: DocumentType.MEMO,
+	          documentType: documentTypes[0]?.id || DocumentType.MEMO,
           priority: "NORMAL",
           confidentiality: "PUBLIC",
           sender: "",
@@ -277,8 +280,10 @@ export default function App() {
   const draftCount = documents.filter(d => d.status === DocumentStatus.DRAFT).length;
   const onVisaCount = documents.filter(d => d.status === DocumentStatus.ON_VISA || d.status === DocumentStatus.SENT_TO_VISA).length;
   const signingCount = documents.filter(d => d.status === DocumentStatus.SENT_TO_SIGN || d.signatureStatus === "PENDING").length;
-  const signedCount = documents.filter(d => d.status === DocumentStatus.SIGNED).length;
-  const overdueCount = documents.filter(d => d.status === DocumentStatus.OVERDUE).length;
+  const unreadCount = documents.filter(d => d.status === DocumentStatus.RECEIVED).length;
+  const readCount = documents.filter(d => d.status === DocumentStatus.READ).length;
+  const completedCount = documents.filter(d => d.status === DocumentStatus.SIGNED || d.status === DocumentStatus.COMPLETED).length;
+  const archivedCount = documents.filter(d => d.archiveStatus === "ARCHIVED" || ((d.status === DocumentStatus.SIGNED || d.status === DocumentStatus.COMPLETED) && d.signedAt && Date.now() - new Date(d.signedAt).getTime() > 30 * 24 * 60 * 60 * 1000)).length;
 
   // Unread notification count
   const unreadNotifications = notifications.filter(n => !n.isRead);
@@ -446,8 +451,32 @@ export default function App() {
           <div className="space-y-2">
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-4 block">საქაღალდეები</span>
             <div className="space-y-1 text-xs">
-              <button
-                onClick={() => {
+	              {[
+	                { label: "წაუკითხავი", filter: DocumentStatus.RECEIVED, count: unreadCount, tone: "bg-sky-900/40 text-sky-300" },
+	                { label: "წაკითხული", filter: DocumentStatus.READ, count: readCount, tone: "bg-slate-800 text-slate-300" },
+	                { label: "ხელმოსაწერი", filter: DocumentStatus.SENT_TO_SIGN, count: signingCount, tone: "bg-indigo-950/40 text-indigo-300" },
+	                { label: "დასრულებული", filter: "COMPLETED_FOLDER", count: completedCount, tone: "bg-emerald-950/40 text-emerald-400" },
+	                { label: "არქივი", filter: "ARCHIVE_FOLDER", count: archivedCount, tone: "bg-violet-950/40 text-violet-300" }
+	              ].map(item => (
+	                <button
+	                  key={item.filter}
+	                  onClick={() => {
+	                    setListStatusFilter(item.filter);
+	                    setListCategoryFilter("ALL");
+	                    setActiveTab("list");
+	                    setSelectedDocId(null);
+	                  }}
+	                  className={`w-full flex items-center justify-between px-4 py-2 rounded-lg text-left transition font-sans ${
+	                    listStatusFilter === item.filter ? "bg-slate-800 text-white" : "text-slate-400 hover:bg-slate-800/30 hover:text-white"
+	                  }`}
+	                >
+	                  <span>{item.label}</span>
+	                  {item.count > 0 && <span className={`${item.tone} font-mono text-[9px] px-1.5 py-0.5 rounded-md font-bold`}>{item.count}</span>}
+	                </button>
+	              ))}
+
+	              <button
+	                onClick={() => {
 	                setListStatusFilter(DocumentStatus.DRAFT);
 	                setListCategoryFilter("ALL");
 	                setActiveTab("list");
@@ -455,11 +484,11 @@ export default function App() {
 	              }}
                 className="w-full flex items-center justify-between px-4 py-2 rounded-lg text-slate-400 hover:bg-slate-800/30 hover:text-white text-left transition font-sans"
               >
-                <span>პროექტები (Drafts)</span>
+	                <span>დრაფტი</span>
                 {draftCount > 0 && <span className="bg-slate-800 text-slate-300 font-mono text-[9px] px-1.5 py-0.5 rounded-md font-bold">{draftCount}</span>}
               </button>
 
-              <button
+	              <button
                 onClick={() => {
 	                  setListStatusFilter("VISA_FOLDER");
 	                  setListCategoryFilter("ALL");
@@ -472,31 +501,6 @@ export default function App() {
                 {onVisaCount > 0 && <span className="bg-amber-900/40 text-amber-400 font-mono text-[9px] px-1.5 py-0.5 rounded-md font-bold">{onVisaCount}</span>}
               </button>
 
-              <button
-                onClick={() => {
-	                  setListStatusFilter(DocumentStatus.SIGNED);
-	                  setListCategoryFilter("ALL");
-	                  setActiveTab("list");
-	                  setSelectedDocId(null);
-	                }}
-                className="w-full flex items-center justify-between px-4 py-2 rounded-lg text-slate-400 hover:bg-slate-800/30 hover:text-white text-left transition font-sans"
-              >
-                <span>ხელმოწერილი</span>
-                {signedCount > 0 && <span className="bg-emerald-950/40 text-emerald-400 font-mono text-[9px] px-1.5 py-0.5 rounded-md font-bold">{signedCount}</span>}
-              </button>
-
-              <button
-                onClick={() => {
-	                  setListStatusFilter(DocumentStatus.SENT_TO_SIGN);
-	                  setListCategoryFilter("ALL");
-	                  setActiveTab("list");
-	                  setSelectedDocId(null);
-	                }}
-                className="w-full flex items-center justify-between px-4 py-2 rounded-lg text-slate-400 hover:bg-slate-800/30 hover:text-white text-left transition font-sans"
-              >
-                <span>ხელმოსაწერი</span>
-                {signingCount > 0 && <span className="bg-indigo-950/40 text-indigo-300 font-mono text-[9px] px-1.5 py-0.5 rounded-md font-bold">{signingCount}</span>}
-              </button>
             </div>
           </div>
         </div>
@@ -617,6 +621,10 @@ export default function App() {
 	                  documents={
 	                    listStatusFilter === "VISA_FOLDER"
 	                      ? documents.filter(d => d.status === DocumentStatus.ON_VISA || d.status === DocumentStatus.SENT_TO_VISA)
+	                    : listStatusFilter === "COMPLETED_FOLDER"
+	                      ? documents.filter(d => d.status === DocumentStatus.SIGNED || d.status === DocumentStatus.COMPLETED)
+	                    : listStatusFilter === "ARCHIVE_FOLDER"
+	                      ? documents.filter(d => d.archiveStatus === "ARCHIVED" || ((d.status === DocumentStatus.SIGNED || d.status === DocumentStatus.COMPLETED) && d.signedAt && Date.now() - new Date(d.signedAt).getTime() > 30 * 24 * 60 * 60 * 1000))
 	                    : listStatusFilter !== "ALL"
 	                      ? documents.filter(d => d.status === listStatusFilter)
                       : listCategoryFilter !== "ALL"
@@ -624,7 +632,8 @@ export default function App() {
                       : documents
                   }
                   users={users}
-                  departments={departments}
+	                  departments={departments}
+	                  documentTypes={documentTypes}
                   onOpenDocument={(id) => setSelectedDocId(id)}
                   onEditDocument={(id) => {
                     setSelectedDocId(id);
@@ -663,9 +672,9 @@ export default function App() {
                           onChange={e => setNewDoc({ ...newDoc, documentType: e.target.value as DocumentType })}
                           className="border border-slate-200 rounded-xl p-3 text-sm font-sans bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-100"
                         >
-                          {Object.values(DocumentType).map(type => (
-                            <option key={type} value={type}>{GEORGIAN_DOCUMENT_TYPES[type]}</option>
-                          ))}
+	                          {(documentTypes.length ? documentTypes : Object.entries(GEORGIAN_DOCUMENT_TYPES).map(([id, label]) => ({ id, label }))).map(type => (
+	                            <option key={type.id} value={type.id}>{type.label}</option>
+	                          ))}
                         </select>
                       </label>
 

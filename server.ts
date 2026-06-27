@@ -264,6 +264,37 @@ app.get("/api/departments", (req, res) => {
   res.json(data.departments);
 });
 
+app.get("/api/admin/document-types", (req, res) => {
+  const data = getDb() as any;
+  if (!data.document_types) {
+    data.document_types = Object.entries({
+      LETTER: "წერილი",
+      REQUEST: "მოთხოვნა",
+      APPLICATION: "განცხადება",
+      ORDER: "ბრძანება",
+      MEMO: "მოხსენებითი ბარათი",
+      REPORT: "ანგარიში",
+      CERTIFICATE: "ცნობა",
+      CONTRACT: "ხელშეკრულება",
+      RESOLUTION: "რეზოლუცია",
+      OTHER: "სხვა"
+    }).map(([id, label]) => ({ id, label, isActive: true }));
+  }
+  res.json(data.document_types);
+});
+
+app.post("/api/admin/document-types", (req, res) => {
+  const data = getDb() as any;
+  if (!data.document_types) data.document_types = [];
+  const label = String(req.body.label || "").trim();
+  if (!label) return res.status(400).json({ message: "ტიპის დასახელება აუცილებელია" });
+  const id = String(req.body.id || label).trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "") || `TYPE_${Date.now()}`;
+  const created = { id, label, isActive: true };
+  data.document_types.push(created);
+  saveDb(data);
+  res.status(201).json(created);
+});
+
 app.post("/api/departments", (req, res) => {
   const data = getDb();
   const dep = { id: "dep-" + Math.random().toString(36).substring(2, 9), ...req.body };
@@ -454,6 +485,12 @@ app.get("/api/documents/:id", (req, res) => {
   const data = getDb();
   const doc = data.documents.find((d: Document) => d.id === req.params.id);
   if (!doc) return res.status(404).json({ message: "დოკუმენტი ვერ მოიძებნა" });
+  const viewerId = ((req.headers.authorization || "") as string).replace("Bearer jwt-mock-token-", "");
+  if (viewerId && doc.status === DocumentStatus.RECEIVED) {
+    doc.status = DocumentStatus.READ;
+    doc.updatedAt = new Date().toISOString();
+    saveDb(data);
+  }
   res.json(doc);
 });
 
@@ -1030,7 +1067,7 @@ app.post("/api/documents/:id/sign", (req, res) => {
   }
 
   // Finalize document status
-  doc.status = DocumentStatus.SIGNED;
+  doc.status = DocumentStatus.COMPLETED;
   doc.signatureStatus = "SIGNED";
   doc.signedAt = new Date().toISOString();
   doc.signedById = userId;

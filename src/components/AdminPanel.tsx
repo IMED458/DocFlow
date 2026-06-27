@@ -44,6 +44,7 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [positions, setPositions] = useState<any[]>([]);
   const [departments, setDepartments] = useState<any[]>([]);
+  const [documentTypes, setDocumentTypes] = useState<any[]>([]);
   const [templates, setTemplates] = useState<HeaderFooterTemplate[]>([]);
 
   // Editing states
@@ -67,6 +68,7 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
   const [newPositionName, setNewPositionName] = useState("");
   const [newPositionDepartmentId, setNewPositionDepartmentId] = useState("");
   const [newDepartmentName, setNewDepartmentName] = useState("");
+  const [newDocumentTypeLabel, setNewDocumentTypeLabel] = useState("");
   const [editingRule, setEditingRule] = useState<NumberingRule | null>(null);
 
   // Form Inputs - Templates list
@@ -96,7 +98,7 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
   const loadAdminData = async () => {
     try {
       const headers = { "Authorization": `Bearer jwt-mock-token-${currentUser.id}` };
-      const [resUsers, resContacts, resRules, resStamps, resAudit, resPositions, resTemplates, resDepartments] = await Promise.all([
+      const [resUsers, resContacts, resRules, resStamps, resAudit, resPositions, resTemplates, resDepartments, resDocumentTypes] = await Promise.all([
         fetch("/api/users", { headers }).then(r => r.json()),
         fetch("/api/admin/external-contacts", { headers }).then(r => r.json()),
         fetch("/api/admin/numbering-rules", { headers }).then(r => r.json()),
@@ -104,7 +106,8 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
         fetch("/api/audit-logs", { headers }).then(r => r.json()),
         fetch("/api/positions", { headers }).then(r => r.json()),
         fetch("/api/admin/header-footer-templates", { headers }).then(r => r.json()),
-        fetch("/api/departments", { headers }).then(r => r.json())
+        fetch("/api/departments", { headers }).then(r => r.json()),
+        fetch("/api/admin/document-types", { headers }).then(r => r.json())
       ]);
 
       setUsers(resUsers);
@@ -115,6 +118,7 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
       setPositions(resPositions || []);
       setTemplates(resTemplates || []);
       setDepartments(resDepartments || []);
+      setDocumentTypes(resDocumentTypes || []);
     } catch (e) {
       console.error(e);
     }
@@ -280,6 +284,27 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
       });
       if (res.ok) {
         setEditingRule(null);
+        loadAdminData();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleCreateDocumentType = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDocumentTypeLabel.trim()) return;
+    try {
+      const res = await fetch("/api/admin/document-types", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer jwt-mock-token-${currentUser.id}`
+        },
+        body: JSON.stringify({ label: newDocumentTypeLabel })
+      });
+      if (res.ok) {
+        setNewDocumentTypeLabel("");
         loadAdminData();
       }
     } catch (e) {
@@ -986,13 +1011,26 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
 	              <h3 className="text-base font-bold text-slate-800 font-display border-b border-slate-100 pb-3">
 	                დოკუმენტის ტიპები
 	              </h3>
+	              <form onSubmit={handleCreateDocumentType} className="flex gap-3">
+	                <input
+	                  value={newDocumentTypeLabel}
+	                  onChange={e => setNewDocumentTypeLabel(e.target.value)}
+	                  placeholder="მაგ: ოქმი, ბრძანება, აქტი..."
+	                  className="border border-slate-200 rounded-lg p-2.5 text-xs font-sans focus:outline-hidden flex-1"
+	                />
+	                <button type="submit" className="bg-slate-900 hover:bg-slate-800 text-white rounded-lg px-5 text-xs font-sans font-semibold flex items-center gap-1 transition">
+	                  <Plus className="w-4 h-4" />
+	                  ტიპის დამატება
+	                </button>
+	              </form>
 	              <p className="text-xs text-slate-500 font-sans">
 	                თანამშრომელი დოკუმენტის შექმნისას ვალდებულია აირჩიოს ტიპი. ამ ტიპებით ხდება ძებნა, ფილტრაცია და ნუმერაციის წესზე მიბმა.
 	              </p>
 	              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-	                {Object.entries(GEORGIAN_DOCUMENT_TYPES).map(([typeId, label]) => (
-	                  <div key={typeId} className="border border-slate-100 rounded-xl p-4 bg-slate-50">
-	                    <div className="font-bold text-sm text-slate-800">{label}</div>
+	                {(documentTypes.length ? documentTypes : Object.entries(GEORGIAN_DOCUMENT_TYPES).map(([id, label]) => ({ id, label, isActive: true }))).map(typeItem => (
+	                  <div key={typeItem.id} className="border border-slate-100 rounded-xl p-4 bg-slate-50">
+	                    <div className="font-bold text-sm text-slate-800">{typeItem.label}</div>
+	                    <div className="text-xxs text-slate-400 mt-1 font-mono">{typeItem.id}</div>
 	                    <div className="text-xxs text-emerald-600 font-bold mt-2">აქტიური</div>
 	                  </div>
 	                ))}

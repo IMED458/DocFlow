@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="DocFlow Georgia">
+  <rect width="64" height="64" rx="14" fill="#0f3b5f"/>
+  <path d="M20 12h19l9 9v31H20z" fill="#ffffff"/>
+  <path d="M39 12v10h9z" fill="#bfe9ea"/>
+  <path d="M24 30h16M24 36h12M24 42h10" stroke="#0f3b5f" stroke-width="3" stroke-linecap="round"/>
+  <path d="M16 36a18 18 0 0 1 31-12" fill="none" stroke="#18b7ad" stroke-width="4" stroke-linecap="round"/>
+  <path d="M47 18v8h-8" fill="none" stroke="#18b7ad" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M32 49l6 6 12-15" fill="none" stroke="#18b7ad" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
