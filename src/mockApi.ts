@@ -1,8 +1,9 @@
 import seedDb from "../db.json";
+import { firestore } from "./firebase";
+import { collection, getDocs, doc, writeBatch } from "firebase/firestore";
 
 type Db = Record<string, any[]>;
 
-const STORAGE_KEY = "docflow-georgia-static-db";
 const defaultDocumentTypes = [
   { id: "LETTER", label: "წერილი", isActive: true },
   { id: "REQUEST", label: "მოთხოვნა", isActive: true },
@@ -33,32 +34,151 @@ const collectionByApiName: Record<string, string> = {
   "document-types": "document_types",
 };
 
+// ყველა კოლექცია, რომელიც Firestore-ში ინახება (db.json-ის გასაღებები + document_types).
+const ALL_COLLECTIONS = [
+  "organizations", "departments", "positions", "users", "documents",
+  "document_versions", "document_files", "document_recipients", "document_addressees",
+  "document_basis_links", "document_related_links", "external_resolutions",
+  "document_external_resolution_links", "numbering_rules", "numbering_sequences",
+  "visa_actions", "resolutions", "tasks", "task_comments", "notifications",
+  "audit_logs", "external_contacts", "header_footer_templates", "stamps",
+  "delivery_records", "document_types",
+];
+
+// მონაცემები ინახება Firestore-ში; ბრაუზერში ვაკეშირებთ მეხსიერებაში სწრაფი წვდომისთვის.
 function shouldUseMockApi() {
-  return import.meta.env.VITE_STATIC_API === "true" || location.hostname.endsWith("github.io");
+  return (
+    import.meta.env.VITE_STATIC_API === "true" ||
+    import.meta.env.PROD ||
+    location.hostname.endsWith("github.io")
+  );
 }
 
-function readDb(): Db {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (!parsed.document_types) {
-        parsed.document_types = defaultDocumentTypes;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
-      }
-      return parsed;
-    }
-  } catch {
-    localStorage.removeItem(STORAGE_KEY);
-  }
-  const fresh = structuredClone(seedDb) as Db;
-  fresh.document_types = fresh.document_types || defaultDocumentTypes;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(fresh));
-  return fresh;
+let cache: Db | null = null;
+let loadPromise: Promise<Db> | null = null;
+// ბოლოს დასინქრონებული მდგომარეობა — id → JSON (მინიმალური ჩაწერებისთვის).
+const synced: Record<string, Map<string, string>> = {};
+
+function emptyDb(): Db {
+  const d: Db = {};
+  for (const name of ALL_COLLECTIONS) d[name] = [];
+  return d;
 }
+
+function normalizeSeed(): Db {
+  const seed = structuredClone(seedDb) as Db;
+  for (const name of ALL_COLLECTIONS) if (!Array.isArray(seed[name])) seed[name] = [];
+  seed.document_types = seed.document_types?.length ? seed.document_types : defaultDocumentTypes;
+  return seed;
+}
+
+function snapshotSynced(name: string, rows: any[]) {
+  const map = new Map<string, string>();
+  for (const row of rows) {
+    if (row?.id == null) continue;
+    map.set(String(row.id), JSON.stringify(row));
+  }
+  synced[name] = map;
+}
+
+async function writeRowsToFirestore(name: string, rows: any[]) {
+  for (let i = 0; i < rows.length; i += 400) {
+    const batch = writeBatch(firestore);
+    for (const row of rows.slice(i, i + 400)) {
+      if (row?.id == null) continue;
+      // Firestore არ იღებს undefined-ს — ვასუფთავებთ JSON-ით.
+      batch.set(doc(firestore, name, String(row.id)), JSON.parse(JSON.stringify(row)));
+    }
+    await batch.commit();
+  }
+}
+
+async function seedFirestore(seed: Db) {
+  for (const name of ALL_COLLECTIONS) {
+    await writeRowsToFirestore(name, seed[name] || []);
+    snapshotSynced(name, seed[name] || []);
+  }
+}
+
+async function loadFromFirestore(): Promise<Db> {
+  const result = emptyDb();
+  await Promise.all(
+    ALL_COLLECTIONS.map(async (name) => {
+      const snap = await getDocs(collection(firestore, name));
+      result[name] = snap.docs.map((d) => d.data());
+      snapshotSynced(name, result[name]);
+    })
+  );
+  const userCount = result.users.length;
+
+  // პირველი გაშვება — ცარიელი Firestore → ვთესავთ საწყის მონაცემებს.
+  if (userCount === 0) {
+    const seed = normalizeSeed();
+    await seedFirestore(seed);
+    return seed;
+  }
+
+  // document_types აუცილებელია; თუ ცარიელია, ვავსებთ ნაგულისხმევით.
+  if (!result.document_types || result.document_types.length === 0) {
+    result.document_types = defaultDocumentTypes;
+    await writeRowsToFirestore("document_types", defaultDocumentTypes);
+    snapshotSynced("document_types", defaultDocumentTypes);
+  }
+  return result;
+}
+
+async function ensureLoaded(): Promise<Db> {
+  if (cache) return cache;
+  if (!loadPromise) {
+    loadPromise = loadFromFirestore()
+      .then((db) => { cache = db; return db; })
+      .catch((e) => {
+        console.error("Firestore ჩატვირთვა ჩაიშალა; ვიყენებთ საწყის მონაცემებს", e);
+        cache = normalizeSeed();
+        return cache;
+      });
+  }
+  return loadPromise;
+}
+
+// ცვლილებების Firestore-ში ჩაწერა — სერიულად, მხოლოდ ცვლილებები.
+let writeChain: Promise<void> = Promise.resolve();
 
 function writeDb(db: Db) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+  cache = db;
+  writeChain = writeChain.then(() => persistChanges(db)).catch((e) => console.error("Firestore ჩაწერა ჩაიშალა", e));
+}
+
+async function persistChanges(db: Db) {
+  for (const name of ALL_COLLECTIONS) {
+    const rows = db[name] || [];
+    const prev = synced[name] || new Map<string, string>();
+    const next = new Map<string, string>();
+    const ops: Array<{ type: "set" | "del"; id: string; data?: any }> = [];
+
+    for (const row of rows) {
+      if (row?.id == null) continue;
+      const id = String(row.id);
+      const json = JSON.stringify(row);
+      next.set(id, json);
+      if (prev.get(id) !== json) ops.push({ type: "set", id, data: JSON.parse(json) });
+    }
+    for (const id of prev.keys()) {
+      if (!next.has(id)) ops.push({ type: "del", id });
+    }
+    if (ops.length === 0) { synced[name] = next; continue; }
+
+    for (let i = 0; i < ops.length; i += 400) {
+      const batch = writeBatch(firestore);
+      for (const op of ops.slice(i, i + 400)) {
+        const ref = doc(firestore, name, op.id);
+        if (op.type === "set") batch.set(ref, op.data);
+        else batch.delete(ref);
+      }
+      await batch.commit();
+    }
+    synced[name] = next;
+  }
 }
 
 function json(data: unknown, init: ResponseInit = {}) {
@@ -135,7 +255,7 @@ async function handleApi(request: Request, init?: RequestInit) {
   const url = new URL(request.url);
   const parts = url.pathname.replace(/^\/api\/?/, "").split("/").filter(Boolean);
   const method = (init?.method || request.method || "GET").toUpperCase();
-  const db = readDb();
+  const db = await ensureLoaded();
   const userId = getCurrentUserId(request);
 
   if (parts[0] === "auth" && parts[1] === "login" && method === "POST") {
@@ -367,10 +487,67 @@ async function handleApi(request: Request, init?: RequestInit) {
       writeDb(db);
       return json({ ok: true });
     }
-    if (parts[2] === "basis-links") return json(db.document_basis_links.filter((r) => r.documentId === docId));
+    if (parts[2] === "basis-links") {
+      db.document_basis_links = db.document_basis_links || [];
+      if (method === "POST") {
+        const body = await readBody(init);
+        const link = {
+          id: nextId("link"),
+          documentId: docId,
+          basisDocumentId: body.basisDocumentId,
+          relationshipType: body.relationshipType || "საფუძვლად გამოყენებული დოკუმენტი",
+          comment: body.comment,
+          linkedBy: body.userId || userId,
+          linkedAt: new Date().toISOString(),
+        };
+        db.document_basis_links.push(link);
+        writeDb(db);
+        return json(link, { status: 201 });
+      }
+      if (method === "DELETE") {
+        db.document_basis_links = db.document_basis_links.filter((l) => l.id !== parts[3]);
+        writeDb(db);
+        return json({ ok: true });
+      }
+      return json(db.document_basis_links.filter((r) => r.documentId === docId));
+    }
+    if (parts[2] === "external-resolution-links") {
+      db.document_external_resolution_links = db.document_external_resolution_links || [];
+      if (method === "POST") {
+        const body = await readBody(init);
+        const link = { id: nextId("link-ext"), documentId: docId, ...body, linkedAt: new Date().toISOString() };
+        db.document_external_resolution_links.push(link);
+        writeDb(db);
+        return json(link, { status: 201 });
+      }
+      if (method === "DELETE") {
+        db.document_external_resolution_links = db.document_external_resolution_links.filter((l) => l.id !== parts[3]);
+        writeDb(db);
+        return json({ ok: true });
+      }
+      return json(db.document_external_resolution_links.filter((r) => r.documentId === docId));
+    }
     if (parts[2] === "versions") return json(db.document_versions.filter((v) => v.documentId === docId));
     if (parts[2] === "visa-history") return json(db.visa_actions.filter((v) => v.documentId === docId));
-    if (parts[2] === "resolutions") return json(db.resolutions.filter((r) => r.documentId === docId));
+    if (parts[2] === "resolutions") {
+      db.resolutions = db.resolutions || [];
+      if (method === "POST") {
+        const body = await readBody(init);
+        const res = {
+          id: nextId("res"),
+          documentId: docId,
+          text: body.text,
+          creatorId: body.creatorId || userId,
+          deadline: body.deadline,
+          createdAt: new Date().toISOString(),
+        };
+        db.resolutions.push(res);
+        doc.status = "RESOLUTION_ASSIGNED";
+        writeDb(db);
+        return json(res, { status: 201 });
+      }
+      return json(db.resolutions.filter((r) => r.documentId === docId));
+    }
     if (method === "POST" && parts[2] === "visa" && parts[3] === "send") {
       const body = await readBody(init);
       doc.status = "SENT_TO_VISA";
@@ -465,6 +642,56 @@ async function handleApi(request: Request, init?: RequestInit) {
     }
   }
 
+  // რეზოლუციაზე დავალების გაწერა
+  if (parts[0] === "resolutions" && parts[2] === "tasks" && method === "POST") {
+    db.tasks = db.tasks || [];
+    const body = await readBody(init);
+    const task = {
+      id: nextId("tsk"),
+      documentId: body.documentId,
+      resolutionId: parts[1],
+      assigneeId: body.assigneeId,
+      coAssignees: body.coAssignees || [],
+      status: "ASSIGNED",
+      deadline: body.deadline,
+      description: body.description,
+      createdBy: body.createdBy || userId,
+      createdAt: new Date().toISOString(),
+      completionFiles: [],
+    };
+    db.tasks.push(task);
+    db.notifications = db.notifications || [];
+    db.notifications.push({
+      id: nextId("not"),
+      userId: body.assigneeId,
+      title: "ახალი დავალება",
+      message: `თქვენ დაგეკისრათ დავალება: ${body.description}`,
+      read: false,
+      createdAt: new Date().toISOString(),
+    });
+    writeDb(db);
+    return json(task, { status: 201 });
+  }
+
+  // დავალების შესრულება/დაბრუნება
+  if (parts[0] === "tasks" && parts[2] && method === "POST") {
+    db.tasks = db.tasks || [];
+    const task = db.tasks.find((t) => t.id === parts[1]);
+    if (!task) return json({ message: "დავალება ვერ მოიძებნა" }, { status: 404 });
+    const body = await readBody(init);
+    if (parts[2] === "complete") {
+      task.status = "COMPLETED";
+      task.completionText = body.completionText;
+      task.completionFiles = body.completionFiles || [];
+      task.completedAt = new Date().toISOString();
+    } else if (parts[2] === "return") {
+      task.status = "RETURNED";
+      task.returnedReason = body.returnedReason;
+    }
+    writeDb(db);
+    return json(task);
+  }
+
   if (collectionKey) {
     const idIndex = parts[0] === "admin" ? 2 : 1;
     const id = parts[idIndex];
@@ -496,6 +723,9 @@ async function handleApi(request: Request, init?: RequestInit) {
 
 export function installMockApi() {
   if (!shouldUseMockApi()) return;
+
+  // მონაცემების ადრეული ჩატვირთვა Firestore-დან (არ ვბლოკავთ).
+  void ensureLoaded();
 
   const realFetch = window.fetch.bind(window);
   window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {

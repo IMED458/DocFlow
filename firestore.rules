@@ -1,0 +1,15 @@
+rules_version = '2';
+
+// DocFlow — Cloud Firestore წვდომის წესები.
+//
+// ⚠️ ყურადღება: აპლიკაცია იყენებს საკუთარ (username/password) ავტორიზაციას
+// და არა Firebase Authentication-ს, ამიტომ ბრაუზერიდან წვდომისთვის წესები
+// ღიაა. ეს გამოსადეგია შიდა/სადემონსტრაციო გამოყენებისთვის. საჯარო პროდუქციისთვის
+// გადადით Firebase Authentication-ზე და შემოიფარგლეთ წვდომა request.auth-ით.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
