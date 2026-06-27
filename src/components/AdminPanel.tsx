@@ -55,9 +55,10 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
     firstName: "",
     lastName: "",
     personalNumber: "",
+    username: "",
     email: "",
     phone: "",
-	    role: UserRole.EXECUTOR,
+	    role: UserRole.EMPLOYEE,
 	    departmentId: "",
 	    stampPermission: false,
     positionName: "",
@@ -131,6 +132,15 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
   // User Actions
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
+    const username = (newUser.username || "").trim();
+    if (!username) {
+      window.alert("მომხმარებლის სახელი აუცილებელია.");
+      return;
+    }
+    if (username.includes("@")) {
+      window.alert("მომხმარებლის სახელი არ უნდა იყოს ელ-ფოსტა.");
+      return;
+    }
     try {
       const res = await fetch("/api/users", {
         method: "POST",
@@ -148,15 +158,19 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
           firstName: "",
           lastName: "",
           personalNumber: "",
+          username: "",
           email: "",
           phone: "",
-	          role: UserRole.EXECUTOR,
+	          role: UserRole.EMPLOYEE,
 	          departmentId: "",
 	          stampPermission: false,
           positionName: "",
           password: ""
         });
         loadAdminData();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        window.alert(err.message || "მომხმარებლის შექმნა ვერ მოხერხდა.");
       }
     } catch (e) {
       console.error(e);
@@ -568,13 +582,24 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
                         />
                       </div>
                       <div className="flex flex-col">
-                        <label className="text-xxs font-semibold text-slate-500 mb-1">ელ-ფოსტა <span className="text-rose-500">*</span></label>
+                        <label className="text-xxs font-semibold text-slate-500 mb-1">მომხმარებლის სახელი (username) <span className="text-rose-500">*</span></label>
+                        <input
+                          type="text"
+                          autoComplete="off"
+                          placeholder="მაგ: g.meladze (არა ელ-ფოსტა)"
+                          value={newUser.username || ""}
+                          onChange={e => setNewUser({ ...newUser, username: e.target.value })}
+                          required
+                          className="border border-slate-200 rounded-lg p-2 text-xs font-sans font-mono focus:outline-hidden"
+                        />
+                      </div>
+                      <div className="flex flex-col">
+                        <label className="text-xxs font-semibold text-slate-500 mb-1">ელ-ფოსტა (არასავალდებულო)</label>
                         <input
                           type="email"
                           placeholder="ელ-ფოსტა"
-                          value={newUser.email}
+                          value={newUser.email || ""}
                           onChange={e => setNewUser({ ...newUser, email: e.target.value })}
-                          required
                           className="border border-slate-200 rounded-lg p-2 text-xs font-sans focus:outline-hidden"
                         />
                       </div>
@@ -722,12 +747,21 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
                         />
                       </div>
                       <div className="flex flex-col">
-                        <label className="text-xxs font-semibold text-slate-500 mb-1">ელ-ფოსტა</label>
+                        <label className="text-xxs font-semibold text-slate-500 mb-1">მომხმარებლის სახელი (username)</label>
+                        <input
+                          type="text"
+                          value={editingUser.username || ""}
+                          onChange={e => setEditingUser({ ...editingUser, username: e.target.value })}
+                          required
+                          className="border border-slate-200 rounded-lg p-2 text-xs font-sans font-mono bg-white focus:outline-hidden"
+                        />
+                      </div>
+                      <div className="flex flex-col">
+                        <label className="text-xxs font-semibold text-slate-500 mb-1">ელ-ფოსტა (არასავალდებულო)</label>
                         <input
                           type="email"
-                          value={editingUser.email}
+                          value={editingUser.email || ""}
                           onChange={e => setEditingUser({ ...editingUser, email: e.target.value })}
-                          required
                           className="border border-slate-200 rounded-lg p-2 text-xs font-sans bg-white focus:outline-hidden"
                         />
                       </div>
@@ -855,6 +889,7 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-100 text-slate-600 text-xs font-sans font-semibold uppercase">
                       <th className="p-4">სახელი და გვარი</th>
+                      <th className="p-4">მომხმარებელი</th>
                       <th className="p-4">პირადი ნომერი</th>
                       <th className="p-4">ელ-ფოსტა / ტელეფონი</th>
                       <th className="p-4">როლი</th>
@@ -867,6 +902,7 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
                     {users.map(u => (
                       <tr key={u.id} className="hover:bg-slate-50 transition">
                         <td className="p-4 font-semibold text-slate-800">{u.firstName} {u.lastName}</td>
+                        <td className="p-4 font-mono text-slate-700">{u.username || "—"}</td>
                         <td className="p-4 font-mono text-slate-500">{u.personalNumber}</td>
                         <td className="p-4 text-slate-600">
                           <div>{u.email}</div>

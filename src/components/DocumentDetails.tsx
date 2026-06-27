@@ -32,6 +32,7 @@ import {
   GEORGIAN_DOCUMENT_TYPES,
   GEORGIAN_CATEGORIES,
   GEORGIAN_ROLES,
+  roleLabel,
   VisaActionStatus,
   TaskStatus,
   User,
@@ -64,6 +65,7 @@ export default function DocumentDetails({
   const [templates, setTemplates] = useState<any[]>([]);
   const [versions, setVersions] = useState<any[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
+  const [allDocs, setAllDocs] = useState<any[]>([]);
 
   // Right sidebar collapsible sections toggles
   const [openSections, setOpenSections] = useState({
@@ -116,19 +118,39 @@ export default function DocumentDetails({
   const [taskDesc, setTaskDesc] = useState("");
   const [taskDeadline, setTaskDeadline] = useState("");
 
+  // Visa participant search
+  const [visaSearch, setVisaSearch] = useState("");
+
   // Recipients input
   const [selectedRecipientId, setSelectedRecipientId] = useState("");
   const [manualRecipientName, setManualRecipientName] = useState("");
   const [manualRecipientPosition, setManualRecipientPosition] = useState("");
+  const [manualRecipientTaxId, setManualRecipientTaxId] = useState("");
+  const [manualRecipientAddress, setManualRecipientAddress] = useState("");
+  // ადრესატის გაფართოებული ძებნა
+  const [recipientSearch, setRecipientSearch] = useState("");
+  const [contactResults, setContactResults] = useState<any[]>([]);
+  const [showRecipientAdvanced, setShowRecipientAdvanced] = useState(false);
 
   // Authors input
   const [selectedAuthorId, setSelectedAuthorId] = useState("");
   const [manualAuthorName, setManualAuthorName] = useState("");
   const [manualAuthorPosition, setManualAuthorPosition] = useState("");
 
-  // Basis search
+  // Basis search (quick + advanced)
   const [basisQuery, setBasisQuery] = useState("");
   const [basisSearchResults, setBasisSearchResults] = useState<any[]>([]);
+  const [showBasisAdvanced, setShowBasisAdvanced] = useState(false);
+  const [basisFilters, setBasisFilters] = useState({
+    documentNumber: "",
+    entryNumber: "",
+    subject: "",
+    author: "",
+    category: "",
+    type: "",
+    dateFrom: "",
+    dateTo: ""
+  });
 
   // Fetch all related entities from APIs
   const loadDetails = async () => {
@@ -159,6 +181,11 @@ export default function DocumentDetails({
         fetch(`/api/documents/${documentId}/versions`, { headers }).then(r => r.json()),
         fetch("/api/tasks", { headers }).then(r => r.json())
       ]);
+
+      try {
+        const docsRes = await fetch("/api/documents", { headers }).then(r => r.json());
+        setAllDocs(Array.isArray(docsRes) ? docsRes : []);
+      } catch { /* noop */ }
 
       setDoc(resDoc);
       setFiles(resFiles);
@@ -246,6 +273,26 @@ export default function DocumentDetails({
     }
   };
 
+  // ადმინისტრატორის სრული წაშლა
+  const handleDeleteDocument = async () => {
+    if (!window.confirm("ნამდვილად გსურთ დოკუმენტის სრულად წაშლა? ეს ქმედება შეუქცევადია.")) return;
+    try {
+      const res = await fetch(`/api/documents/${doc.id}`, {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer jwt-mock-token-${currentUser.id}` }
+      });
+      if (res.ok) {
+        onRefresh();
+        onBack();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        window.alert(err.message || "წაშლა ვერ მოხერხდა");
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   // Update Metadata & Properties
   const handleSaveMetadata = async (fields: Partial<Document>) => {
     try {
@@ -324,7 +371,7 @@ export default function DocumentDetails({
       await handleSendToVisa();
       return;
     }
-    if (doc.status === DocumentStatus.DRAFT && (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CHANCELLERY)) {
+    if (doc.status === DocumentStatus.DRAFT) {
       await handleRegister();
       return;
     }
@@ -378,8 +425,9 @@ export default function DocumentDetails({
           filename: file.name,
           size: file.size,
           mimeType: file.type,
-          content: reader.result,
-          uploadedBy: currentUser.id
+          base64Data: reader.result,
+          uploaderId: currentUser.id,
+          fileType: "ATTACHMENT"
         };
 
         const res = await fetch(`/api/documents/${doc.id}/files`, {
@@ -401,14 +449,15 @@ export default function DocumentDetails({
   };
 
   const handleFileDownload = (fileId: string, filename: string) => {
-    fetch(`/api/documents/${doc.id}/files/${fileId}`, {
+    fetch(`/api/files/${fileId}/download?userId=${currentUser.id}`, {
       headers: { "Authorization": `Bearer jwt-mock-token-${currentUser.id}` }
     })
       .then(res => res.json())
       .then(data => {
-        if (data.content) {
+        const href = data.base64Data || data.content;
+        if (href) {
           const a = window.document.createElement("a");
-          a.href = data.content;
+          a.href = href;
           a.download = filename;
           a.click();
         }
@@ -418,7 +467,7 @@ export default function DocumentDetails({
 
   const handleFileDelete = async (fileId: string) => {
     try {
-      const res = await fetch(`/api/documents/${doc.id}/files/${fileId}`, {
+      const res = await fetch(`/api/files/${fileId}`, {
         method: "DELETE",
         headers: { "Authorization": `Bearer jwt-mock-token-${currentUser.id}` }
       });
@@ -448,6 +497,8 @@ export default function DocumentDetails({
           recipientUserId: u?.id,
           recipientName,
           recipientPosition,
+          recipientTaxId: manualRecipientTaxId.trim(),
+          recipientAddress: manualRecipientAddress.trim(),
           deliveryMethod: "SYSTEM"
         })
       });
@@ -455,6 +506,8 @@ export default function DocumentDetails({
         setSelectedRecipientId("");
         setManualRecipientName("");
         setManualRecipientPosition("");
+        setManualRecipientTaxId("");
+        setManualRecipientAddress("");
         loadDetails();
       }
     } catch (e) {
@@ -512,6 +565,72 @@ export default function DocumentDetails({
       if (res.ok) {
         const list = await res.json();
         setBasisSearchResults(list.filter((x: any) => x.id !== doc.id));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // საფუძვლების გაფართოებული ძებნა
+  const handleBasisAdvancedSearch = async () => {
+    const params = new URLSearchParams();
+    if (basisQuery.trim()) params.set("query", basisQuery.trim());
+    Object.entries(basisFilters).forEach(([k, v]) => {
+      if (v) params.set(k, String(v));
+    });
+    try {
+      const res = await fetch(`/api/documents/search-basis?${params.toString()}`, {
+        headers: { "Authorization": `Bearer jwt-mock-token-${currentUser.id}` }
+      });
+      if (res.ok) {
+        const list = await res.json();
+        setBasisSearchResults(list.filter((x: any) => x.id !== doc.id));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // ადრესატის (გარე კონტაქტის) ძებნა რეესტრში
+  const handleContactSearch = async (q: string) => {
+    setRecipientSearch(q);
+    if (q.trim().length < 2) {
+      setContactResults([]);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/recipients/search?query=${encodeURIComponent(q.trim())}`, {
+        headers: { "Authorization": `Bearer jwt-mock-token-${currentUser.id}` }
+      });
+      if (res.ok) {
+        setContactResults(await res.json());
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleAddContactRecipient = async (contact: any) => {
+    try {
+      const res = await fetch(`/api/documents/${doc.id}/recipients`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer jwt-mock-token-${currentUser.id}`
+        },
+        body: JSON.stringify({
+          recipientType: "EXTERNAL_ORG",
+          recipientName: contact.name || contact.organization,
+          recipientPosition: contact.organization || "",
+          recipientTaxId: contact.taxId || "",
+          recipientAddress: contact.address || "",
+          deliveryMethod: "SYSTEM"
+        })
+      });
+      if (res.ok) {
+        setRecipientSearch("");
+        setContactResults([]);
+        loadDetails();
       }
     } catch (e) {
       console.error(e);
@@ -725,6 +844,14 @@ export default function DocumentDetails({
   const printDate = doc.registrationDate || doc.documentDate || new Date().toISOString().split("T")[0];
   const formattedPrintDate = printDate.split("-").reverse().join("/");
   const printNumber = doc.documentNumber || doc.entryNumber || "";
+  // საბეჭდ ვერსიაში ადრესატის ხაზი — რეალური ადრესატები, პლეისჰოლდერების გარეშე
+  // (მაგ. „შიდა რეზოლუცია“ / „გარე“ არ უნდა დაიბეჭდოს).
+  const RECIPIENT_PLACEHOLDERS = ["შიდა რეზოლუცია", "გარე", "შიდა აპარატი", "სამინისტროს შიდა აპარატი"];
+  const printableRecipients = recipients
+    .filter((r: any) => r.recipientType !== "CHANCELLERY" && r.recipientName && !RECIPIENT_PLACEHOLDERS.includes(String(r.recipientName).trim()))
+    .map((r: any) => r.recipientName);
+  const cleanDocRecipient = doc.recipient && !RECIPIENT_PLACEHOLDERS.includes(doc.recipient.trim()) ? doc.recipient.trim() : "";
+  const printRecipientLine = printableRecipients.length > 0 ? printableRecipients.join(", ") : cleanDocRecipient;
   const documentAuthors = doc.authors && doc.authors.length > 0 ? doc.authors : [{
     id: `author-${doc.authorId}`,
     userId: doc.authorId,
@@ -734,7 +861,9 @@ export default function DocumentDetails({
   }];
   const canEditWorkflow = doc.status !== DocumentStatus.SIGNED && doc.status !== DocumentStatus.COMPLETED && doc.status !== DocumentStatus.CANCELLED;
   const employeeUsers = users;
-  const canCancelDocument = [UserRole.ADMIN, UserRole.MANAGER, UserRole.SIGNER].includes(currentUser.role);
+  // ყველა თანამშრომელს აქვს ყველაფრის უფლება; ადმინს დამატებით — სრული წაშლა.
+  const canCancelDocument = true;
+  const isAdmin = currentUser.role === UserRole.ADMIN;
   const isSignedDocument = doc.signatureStatus === "SIGNED" || doc.status === DocumentStatus.SIGNED || doc.status === DocumentStatus.COMPLETED;
 
   return (
@@ -758,7 +887,7 @@ export default function DocumentDetails({
         {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-2">
           {/* 1. Register Draft */}
-          {doc.status === DocumentStatus.DRAFT && (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.CHANCELLERY) && (
+          {doc.status === DocumentStatus.DRAFT && (
             <button
               onClick={handleRegister}
               className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl text-xs font-sans font-semibold transition shadow-xs"
@@ -797,6 +926,17 @@ export default function DocumentDetails({
             <Printer className="w-4 h-4" />
             ბეჭდვა
           </button>
+
+          {/* Admin: full delete */}
+          {isAdmin && (
+            <button
+              onClick={handleDeleteDocument}
+              className="flex items-center gap-1.5 bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded-xl text-xs font-sans font-semibold transition shadow-xs"
+            >
+              <Trash2 className="w-4 h-4" />
+              წაშლა
+            </button>
+          )}
         </div>
       </div>
 
@@ -943,9 +1083,11 @@ export default function DocumentDetails({
 	                      </div>
                     </div>
 
-                    <div className="mt-8 ml-auto max-w-[100mm] text-right text-[17px] leading-7">
-                      {doc.recipient || doc.subject}
-                    </div>
+                    {printRecipientLine && (
+                      <div className="mt-8 ml-auto max-w-[100mm] text-right text-[17px] leading-7">
+                        {printRecipientLine}
+                      </div>
+                    )}
 
                     <div className="mt-8 space-y-6 text-[18px] leading-8">
                       <div
@@ -1286,8 +1428,21 @@ export default function DocumentDetails({
 	                {canEditWorkflow && !visaHistory.some(h => h.role === "VISA" && h.status === VisaActionStatus.PENDING) && (
 	                  <div className="space-y-2.5">
 	                    <label className="text-xxs font-bold text-slate-400 block font-sans">ვიზირებაში მონაწილე თანამშრომლები:</label>
+	                    <input
+	                      type="text"
+	                      value={visaSearch}
+	                      onChange={e => setVisaSearch(e.target.value)}
+	                      placeholder="ძებნა სახელით, თანამდებობით..."
+	                      className="w-full border border-slate-200 rounded-lg p-2 text-xxs font-sans focus:outline-hidden"
+	                    />
 	                    <div className="border border-slate-200 rounded-lg p-2 h-28 overflow-y-auto space-y-1 bg-white">
-	                      {employeeUsers.map(u => (
+	                      {employeeUsers
+	                        .filter(u => {
+	                          const q = visaSearch.trim().toLowerCase();
+	                          if (!q) return true;
+	                          return `${u.firstName} ${u.lastName} ${u.positionName || roleLabel(u.role)}`.toLowerCase().includes(q);
+	                        })
+	                        .map(u => (
 	                        <label key={u.id} className="flex items-center gap-2 text-xxs font-sans cursor-pointer text-slate-700 hover:text-slate-900">
 	                          <input
                             type="checkbox"
@@ -1408,23 +1563,102 @@ export default function DocumentDetails({
               <div className="p-4 space-y-3">
                 {/* Search input for adding bases */}
                 {doc.status !== DocumentStatus.SIGNED && (
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="ჩაწერეთ ნომერი / საგანი..."
-                      value={basisQuery}
-                      onChange={e => handleBasisSearch(e.target.value)}
-                      className="w-full border border-slate-200 rounded-lg p-2 text-xxs font-sans focus:outline-hidden"
-                    />
+                  <div className="space-y-2">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="სწრაფი ძებნა: შიდა №, ნომერი, საგანი..."
+                        value={basisQuery}
+                        onChange={e => handleBasisSearch(e.target.value)}
+                        className="w-full border border-slate-200 rounded-lg p-2 text-xxs font-sans focus:outline-hidden"
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowBasisAdvanced(v => !v)}
+                      className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 font-sans flex items-center gap-1"
+                    >
+                      {showBasisAdvanced ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                      გაფართოებული ძებნა
+                    </button>
+
+                    {showBasisAdvanced && (
+                      <div className="space-y-2 p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            placeholder="დოკ. ნომერი"
+                            value={basisFilters.documentNumber}
+                            onChange={e => setBasisFilters({ ...basisFilters, documentNumber: e.target.value })}
+                            className="border border-slate-200 rounded-md p-1.5 text-[10px] font-sans focus:outline-hidden"
+                          />
+                          <input
+                            placeholder="შიდა №"
+                            value={basisFilters.entryNumber}
+                            onChange={e => setBasisFilters({ ...basisFilters, entryNumber: e.target.value })}
+                            className="border border-slate-200 rounded-md p-1.5 text-[10px] font-mono focus:outline-hidden"
+                          />
+                        </div>
+                        <input
+                          placeholder="საგანი (თემა)"
+                          value={basisFilters.subject}
+                          onChange={e => setBasisFilters({ ...basisFilters, subject: e.target.value })}
+                          className="w-full border border-slate-200 rounded-md p-1.5 text-[10px] font-sans focus:outline-hidden"
+                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          <select
+                            value={basisFilters.category}
+                            onChange={e => setBasisFilters({ ...basisFilters, category: e.target.value })}
+                            className="border border-slate-200 rounded-md p-1.5 text-[10px] font-sans bg-white focus:outline-hidden"
+                          >
+                            <option value="">კატეგორია</option>
+                            {Object.entries(GEORGIAN_CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                          </select>
+                          <select
+                            value={basisFilters.author}
+                            onChange={e => setBasisFilters({ ...basisFilters, author: e.target.value })}
+                            className="border border-slate-200 rounded-md p-1.5 text-[10px] font-sans bg-white focus:outline-hidden"
+                          >
+                            <option value="">ავტორი</option>
+                            {users.map(u => <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>)}
+                          </select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            type="date"
+                            value={basisFilters.dateFrom}
+                            onChange={e => setBasisFilters({ ...basisFilters, dateFrom: e.target.value })}
+                            className="border border-slate-200 rounded-md p-1.5 text-[10px] font-sans focus:outline-hidden"
+                          />
+                          <input
+                            type="date"
+                            value={basisFilters.dateTo}
+                            onChange={e => setBasisFilters({ ...basisFilters, dateTo: e.target.value })}
+                            className="border border-slate-200 rounded-md p-1.5 text-[10px] font-sans focus:outline-hidden"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleBasisAdvancedSearch}
+                          className="w-full bg-slate-900 hover:bg-slate-800 text-white text-[10px] font-bold py-1.5 rounded-md transition"
+                        >
+                          ძებნა
+                        </button>
+                      </div>
+                    )}
+
                     {basisSearchResults.length > 0 && (
-                      <div className="absolute top-9 left-0 right-0 bg-white border border-slate-200 rounded-lg shadow-lg p-1.5 z-40 space-y-1 max-h-32 overflow-y-auto">
+                      <div className="bg-white border border-slate-200 rounded-lg p-1.5 space-y-1 max-h-44 overflow-y-auto">
                         {basisSearchResults.map(res => (
                           <div
                             key={res.id}
                             onClick={() => handleAddBasis(res.id)}
-                            className="p-1.5 hover:bg-slate-50 rounded-md cursor-pointer flex items-center justify-between text-[10px] font-sans"
+                            className="p-1.5 hover:bg-slate-50 rounded-md cursor-pointer flex items-center justify-between gap-2 text-[10px] font-sans"
                           >
-                            <span className="truncate max-w-[150px] font-bold">{res.subject}</span>
+                            <span className="min-w-0">
+                              <span className="font-mono text-slate-500 block">{res.documentNumber || `შიდა № ${res.entryNumber || "—"}`}</span>
+                              <span className="truncate font-bold text-slate-800 block">{res.subject}</span>
+                            </span>
                             <Plus className="w-3 h-3 text-indigo-500 shrink-0" />
                           </div>
                         ))}
@@ -1438,25 +1672,32 @@ export default function DocumentDetails({
                   <p className="text-xxs text-slate-400 font-sans italic">საფუძვლები არ არის</p>
                 ) : (
                   <div className="space-y-2 text-xxs font-sans">
-                    {basisLinks.map(link => (
-                      <div key={link.id} className="p-2 bg-slate-50 border rounded-lg flex items-center justify-between">
-                        <span className="truncate font-semibold text-slate-700">ბმა: {link.basisDocumentId.substring(0, 8)}...</span>
-                        {doc.status !== DocumentStatus.SIGNED && (
-                          <button
-                            onClick={async () => {
-                              await fetch(`/api/documents/${doc.id}/basis-links/${link.id}`, {
-                                method: "DELETE",
-                                headers: { "Authorization": `Bearer jwt-mock-token-${currentUser.id}` }
-                              });
-                              loadDetails();
-                            }}
-                            className="text-rose-500 hover:underline font-semibold"
-                          >
-                            წაშლა
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                    {basisLinks.map(link => {
+                      const bdoc = allDocs.find(d => d.id === link.basisDocumentId);
+                      return (
+                        <div key={link.id} className="p-2 bg-slate-50 border rounded-lg flex items-center justify-between gap-2">
+                          <span className="truncate font-semibold text-slate-700">
+                            {bdoc
+                              ? `${bdoc.documentNumber || "შიდა № " + (bdoc.entryNumber || "—")} — ${bdoc.subject}`
+                              : `ბმა: ${link.basisDocumentId.substring(0, 8)}...`}
+                          </span>
+                          {doc.status !== DocumentStatus.SIGNED && (
+                            <button
+                              onClick={async () => {
+                                await fetch(`/api/documents/${doc.id}/basis-links/${link.id}`, {
+                                  method: "DELETE",
+                                  headers: { "Authorization": `Bearer jwt-mock-token-${currentUser.id}` }
+                                });
+                                loadDetails();
+                              }}
+                              className="text-rose-500 hover:underline font-semibold shrink-0"
+                            >
+                              წაშლა
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -1477,30 +1718,88 @@ export default function DocumentDetails({
                 {/* Add recipient controls */}
                 {doc.status !== DocumentStatus.SIGNED && (
                   <div className="space-y-2">
+                    {/* შიდა ადრესატის ძებნა/არჩევა */}
+                    <input
+                      value={recipientSearch}
+                      onChange={e => handleContactSearch(e.target.value)}
+                      placeholder="ძებნა: თანამშრომელი ან გარე რეესტრი..."
+                      className="border border-slate-200 rounded-lg p-2 text-xxs font-sans bg-white w-full focus:outline-hidden"
+                    />
+
+                    {/* გარე რეესტრის შედეგები */}
+                    {contactResults.length > 0 && (
+                      <div className="bg-white border border-slate-200 rounded-lg p-1.5 space-y-1 max-h-32 overflow-y-auto">
+                        {contactResults.map((c: any) => (
+                          <div
+                            key={c.id}
+                            onClick={() => handleAddContactRecipient(c)}
+                            className="p-1.5 hover:bg-slate-50 rounded-md cursor-pointer flex items-center justify-between gap-2 text-[10px] font-sans"
+                          >
+                            <span className="min-w-0">
+                              <span className="font-bold text-slate-800 block truncate">{c.name || c.organization}</span>
+                              <span className="text-slate-400 block truncate">{c.taxId ? `ს/კ ${c.taxId}` : ""} {c.address || ""}</span>
+                            </span>
+                            <Plus className="w-3 h-3 text-indigo-500 shrink-0" />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     <select
                       value={selectedRecipientId}
                       onChange={e => setSelectedRecipientId(e.target.value)}
                       className="border border-slate-200 rounded-lg p-2 text-xxs font-sans bg-white w-full focus:outline-hidden"
                     >
-                      <option value="">თანამშრომელი ან შიდა ადრესატი...</option>
-                      {users.map(u => (
-                        <option key={u.id} value={u.id}>{u.firstName} {u.lastName} - {u.positionName || GEORGIAN_ROLES[u.role]}</option>
-                      ))}
+                      <option value="">თანამშრომელი / შიდა ადრესატი...</option>
+                      {users
+                        .filter(u => {
+                          const q = recipientSearch.trim().toLowerCase();
+                          if (!q) return true;
+                          return `${u.firstName} ${u.lastName} ${u.positionName || roleLabel(u.role)}`.toLowerCase().includes(q);
+                        })
+                        .map(u => (
+                          <option key={u.id} value={u.id}>{u.firstName} {u.lastName} - {u.positionName || roleLabel(u.role)}</option>
+                        ))}
                     </select>
-                    <div className="grid grid-cols-1 gap-2">
-                      <input
-                        value={manualRecipientName}
-                        onChange={e => setManualRecipientName(e.target.value)}
-                        placeholder="ნებისმიერი პირი: სახელი და გვარი"
-                        className="border border-slate-200 rounded-lg p-2 text-xxs font-sans bg-white focus:outline-hidden"
-                      />
-                      <input
-                        value={manualRecipientPosition}
-                        onChange={e => setManualRecipientPosition(e.target.value)}
-                        placeholder="თანამდებობა / ორგანიზაცია"
-                        className="border border-slate-200 rounded-lg p-2 text-xxs font-sans bg-white focus:outline-hidden"
-                      />
-                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowRecipientAdvanced(v => !v)}
+                      className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 font-sans flex items-center gap-1"
+                    >
+                      {showRecipientAdvanced ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                      ხელით დამატება (გაფართოებული)
+                    </button>
+
+                    {showRecipientAdvanced && (
+                      <div className="grid grid-cols-1 gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
+                        <input
+                          value={manualRecipientName}
+                          onChange={e => setManualRecipientName(e.target.value)}
+                          placeholder="გვარი, სახელი / ორგანიზაცია"
+                          className="border border-slate-200 rounded-lg p-2 text-xxs font-sans bg-white focus:outline-hidden"
+                        />
+                        <input
+                          value={manualRecipientPosition}
+                          onChange={e => setManualRecipientPosition(e.target.value)}
+                          placeholder="თანამდებობა / დანაყოფი"
+                          className="border border-slate-200 rounded-lg p-2 text-xxs font-sans bg-white focus:outline-hidden"
+                        />
+                        <input
+                          value={manualRecipientTaxId}
+                          onChange={e => setManualRecipientTaxId(e.target.value)}
+                          placeholder="საიდენტიფიკაციო კოდი"
+                          className="border border-slate-200 rounded-lg p-2 text-xxs font-mono bg-white focus:outline-hidden"
+                        />
+                        <input
+                          value={manualRecipientAddress}
+                          onChange={e => setManualRecipientAddress(e.target.value)}
+                          placeholder="მისამართი"
+                          className="border border-slate-200 rounded-lg p-2 text-xxs font-sans bg-white focus:outline-hidden"
+                        />
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         type="button"
@@ -1526,10 +1825,17 @@ export default function DocumentDetails({
                 ) : (
                   <div className="space-y-1.5">
                     {recipients.map(rec => (
-                      <div key={rec.id} className="p-2 bg-slate-50 border rounded-lg flex items-center justify-between text-xxs font-sans text-slate-700">
-                        <span className="font-semibold truncate">
-                          {rec.recipientName}
-                          {rec.recipientPosition && <span className="text-slate-400 font-normal"> - {rec.recipientPosition}</span>}
+                      <div key={rec.id} className="p-2 bg-slate-50 border rounded-lg flex items-center justify-between text-xxs font-sans text-slate-700 gap-2">
+                        <span className="font-semibold min-w-0">
+                          <span className="truncate block">
+                            {rec.recipientName}
+                            {rec.recipientPosition && <span className="text-slate-400 font-normal"> - {rec.recipientPosition}</span>}
+                          </span>
+                          {(rec.recipientTaxId || rec.recipientAddress) && (
+                            <span className="text-slate-400 font-normal block truncate">
+                              {rec.recipientTaxId ? `ს/კ ${rec.recipientTaxId}` : ""} {rec.recipientAddress || ""}
+                            </span>
+                          )}
                         </span>
                         {doc.status !== DocumentStatus.SIGNED && (
                           <button

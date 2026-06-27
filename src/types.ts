@@ -57,18 +57,18 @@ export enum TaskStatus {
   OVERDUE = "OVERDUE",
 }
 
+// მხოლოდ ორი როლი: ადმინისტრატორი და თანამშრომელი.
+// თანამშრომელსაც და ადმინსაც აქვს ყველაფრის უფლება; ადმინს დამატებით
+// აქვს ადმინისტრირების პანელი და დოკუმენტის სრულად წაშლის უფლება.
 export enum UserRole {
   ADMIN = "ADMIN",
-  ORG_ADMIN = "ORG_ADMIN",
-  CHANCELLERY = "CHANCELLERY",
-  AUTHOR = "AUTHOR",
-  MANAGER = "MANAGER",
-  VISA_APPROVER = "VISA_APPROVER",
-  SIGNER = "SIGNER",
-  EXECUTOR = "EXECUTOR",
-  RECIPIENT = "RECIPIENT",
-  AUDITOR = "AUDITOR",
-  ARCHIVE_MANAGER = "ARCHIVE_MANAGER",
+  EMPLOYEE = "EMPLOYEE",
+}
+
+// უკუთავსებადობა: ძველ ჩანაწერებში შესაძლოა ისტორიული როლები იყოს შენახული.
+// ნებისმიერი არა-ADMIN როლი ითვლება თანამშრომლად.
+export function normalizeRole(role?: string): UserRole {
+  return role === UserRole.ADMIN ? UserRole.ADMIN : UserRole.EMPLOYEE;
 }
 
 export interface Organization {
@@ -98,10 +98,12 @@ export interface User {
   firstName: string;
   lastName: string;
   personalNumber: string;
-  email: string;
+  username: string; // სისტემაში შესვლის სახელი (არ უნდა იყოს ელ-ფოსტა)
+  email?: string;
   phone: string;
   departmentId: string;
-  positionId: string;
+  positionId?: string;
+  positionName?: string; // ხელით ან ნუსხიდან არჩეული თანამდებობა
   role: UserRole;
   status: "ACTIVE" | "INACTIVE";
   substituteId?: string;
@@ -424,15 +426,11 @@ export const GEORGIAN_DOCUMENT_TYPES: Record<DocumentType, string> = {
 };
 
 export const GEORGIAN_ROLES: Record<UserRole, string> = {
-  [UserRole.ADMIN]: "სისტემის ადმინისტრატორი",
-  [UserRole.ORG_ADMIN]: "ორგანიზაციის ადმინისტრატორი",
-  [UserRole.CHANCELLERY]: "კანცელარია / რეგისტრატორი",
-  [UserRole.AUTHOR]: "დოკუმენტის ავტორი",
-  [UserRole.MANAGER]: "მენეჯერი / რეზოლუციის ავტორი",
-  [UserRole.VISA_APPROVER]: "ვიზატორი",
-  [UserRole.SIGNER]: "ხელმომწერი",
-  [UserRole.EXECUTOR]: "შემსრულებელი",
-  [UserRole.RECIPIENT]: "ადრესატი / მკითხველი",
-  [UserRole.AUDITOR]: "აუდიტორი",
-  [UserRole.ARCHIVE_MANAGER]: "არქივის მენეჯერი",
+  [UserRole.ADMIN]: "ადმინისტრატორი",
+  [UserRole.EMPLOYEE]: "თანამშრომელი",
 };
+
+// ნებისმიერი (ისტორიული) როლის ქართული წარწერა — fallback თანამშრომელზე.
+export function roleLabel(role?: string): string {
+  return GEORGIAN_ROLES[normalizeRole(role)];
+}

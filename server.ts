@@ -179,11 +179,15 @@ function assignInternalNumber(data: any, doc: Document) {
 
 // API Auth routes
 app.post("/api/auth/login", (req, res) => {
-  const { email, password } = req.body;
+  const { username, email, password } = req.body;
+  const login = (username ?? email ?? "").trim();
   const data = getDb();
-  const user = data.users.find((u: User) => u.email === email && u.password === password);
+  // შესვლა მომხმარებლის სახელით (ან, უკუთავსებადობისთვის, ელ-ფოსტითაც).
+  const user = data.users.find(
+    (u: User) => (u.username === login || u.email === login) && u.password === password
+  );
   if (!user) {
-    return res.status(401).json({ message: "არასწორი ელ-ფოსტა ან პაროლი" });
+    return res.status(401).json({ message: "არასწორი მომხმარებელი ან პაროლი" });
   }
   const token = "jwt-mock-token-" + user.id;
   logAuditEvent(user.id, `${user.firstName} ${user.lastName}`, "LOGIN", "USER", user.id);
@@ -221,8 +225,16 @@ app.get("/api/users", (req, res) => {
 app.post("/api/users", (req, res) => {
   const user: User = req.body;
   const data = getDb();
+  user.username = String(user.username || "").trim();
+  if (!user.username) {
+    return res.status(400).json({ message: "მომხმარებლის სახელი აუცილებელია" });
+  }
+  if (data.users.some((u: User) => u.username && u.username.toLowerCase() === user.username.toLowerCase())) {
+    return res.status(409).json({ message: "ასეთი მომხმარებლის სახელი უკვე არსებობს" });
+  }
   user.id = "usr-" + Math.random().toString(36).substring(2, 9);
   user.status = "ACTIVE";
+  user.role = user.role === UserRole.ADMIN ? UserRole.ADMIN : UserRole.EMPLOYEE;
   data.users.push(user);
   saveDb(data);
   res.status(201).json(user);
@@ -347,7 +359,6 @@ app.get("/api/documents", (req, res) => {
     category,
     type,
     status,
-    search,
     author,
     department,
     priority,
@@ -361,6 +372,8 @@ app.get("/api/documents", (req, res) => {
     externalResNumber,
     isArchived
   } = req.query;
+  // `q` და `search` ერთი და იგივეა (გაფართოებული ძებნა იყენებს ორივეს).
+  const search = req.query.search ?? req.query.q;
 
   if (category) docs = docs.filter(d => d.category === category);
   if (type) docs = docs.filter(d => d.documentType === type);
@@ -407,10 +420,12 @@ app.get("/api/documents", (req, res) => {
     const q = (search as string).toLowerCase();
     docs = docs.filter(
       d =>
-        d.subject.toLowerCase().includes(q) ||
-        d.description.toLowerCase().includes(q) ||
-        d.body.toLowerCase().includes(q) ||
+        d.subject?.toLowerCase().includes(q) ||
+        d.description?.toLowerCase().includes(q) ||
+        d.body?.toLowerCase().includes(q) ||
         d.documentNumber?.toLowerCase().includes(q) ||
+        d.registrationNumber?.toLowerCase().includes(q) ||
+        d.entryNumber?.toLowerCase().includes(q) ||
         d.sender?.toLowerCase().includes(q) ||
         d.recipient?.toLowerCase().includes(q)
     );
@@ -481,6 +496,39 @@ app.post("/api/documents", (req, res) => {
   res.status(201).json(newDoc);
 });
 
+// Basis documents / Old document linking — გაფართოებული ძებნა.
+// !! უნდა იყოს /:id მარშრუტამდე, რომ "search-basis" id-დ არ ჩაითვალოს.
+app.get("/api/documents/search-basis", (req, res) => {
+  const { query, q, documentNumber, entryNumber, subject, author, category, type, dateFrom, dateTo } = req.query as Record<string, string>;
+  const data = getDb();
+  const text = (query || q || "").toLowerCase();
+
+  const hasAnyFilter = text || documentNumber || entryNumber || subject || author || category || type || dateFrom || dateTo;
+  if (!hasAnyFilter) return res.json([]);
+
+  const results = data.documents.filter((d: any) => {
+    if (text) {
+      const matchesText =
+        d.documentNumber?.toLowerCase().includes(text) ||
+        d.registrationNumber?.toLowerCase().includes(text) ||
+        d.entryNumber?.toLowerCase().includes(text) ||
+        d.subject?.toLowerCase().includes(text) ||
+        d.body?.toLowerCase().includes(text);
+      if (!matchesText) return false;
+    }
+    if (documentNumber && !d.documentNumber?.toLowerCase().includes(documentNumber.toLowerCase())) return false;
+    if (entryNumber && !d.entryNumber?.toLowerCase().includes(entryNumber.toLowerCase())) return false;
+    if (subject && !d.subject?.toLowerCase().includes(subject.toLowerCase())) return false;
+    if (author && d.authorId !== author) return false;
+    if (category && d.category !== category) return false;
+    if (type && d.documentType !== type) return false;
+    if (dateFrom && (d.documentDate || d.createdAt) < dateFrom) return false;
+    if (dateTo && (d.documentDate || d.createdAt) > dateTo + "￿") return false;
+    return true;
+  });
+  res.json(results);
+});
+
 app.get("/api/documents/:id", (req, res) => {
   const data = getDb();
   const doc = data.documents.find((d: Document) => d.id === req.params.id);
@@ -531,6 +579,39 @@ app.delete("/api/documents/:id/draft", (req, res) => {
   res.json({ message: "პროექტი წაიშალა წარმატებით" });
 });
 
+// Full document delete — ADMIN only
+app.delete("/api/documents/:id", (req, res) => {
+  const data = getDb();
+  const requesterId = ((req.headers.authorization || "") as string).replace("Bearer jwt-mock-token-", "");
+  const requester = data.users.find((u: User) => u.id === requesterId);
+  if (!requester || requester.role !== UserRole.ADMIN) {
+    return res.status(403).json({ message: "დოკუმენტის სრულად წაშლა მხოლოდ ადმინისტრატორს შეუძლია" });
+  }
+
+  const idx = data.documents.findIndex((d: Document) => d.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ message: "დოკუმენტი ვერ მოიძებნა" });
+
+  const docId = req.params.id;
+  data.documents.splice(idx, 1);
+
+  // დაკავშირებული ჩანაწერების გასუფთავება
+  const byDoc = (arr?: any[]) => (arr || []).filter((x: any) => x.documentId !== docId);
+  data.document_versions = byDoc(data.document_versions);
+  data.document_files = byDoc(data.document_files);
+  data.document_recipients = byDoc(data.document_recipients);
+  data.document_addressees = byDoc(data.document_addressees);
+  data.document_basis_links = byDoc(data.document_basis_links);
+  data.document_related_links = byDoc(data.document_related_links);
+  data.document_external_resolution_links = byDoc(data.document_external_resolution_links);
+  data.visa_actions = byDoc(data.visa_actions);
+  data.resolutions = byDoc(data.resolutions);
+  data.tasks = byDoc(data.tasks);
+
+  saveDb(data);
+  logAuditEvent(requesterId, `${requester.firstName} ${requester.lastName}`, "DELETE_DOCUMENT", "DOCUMENT", docId);
+  res.json({ message: "დოკუმენტი სრულად წაიშალა" });
+});
+
 // Document Registration
 app.post("/api/documents/:id/register", (req, res) => {
   const data = getDb();
@@ -567,8 +648,8 @@ app.post("/api/documents/:id/cancel", (req, res) => {
   const idx = data.documents.findIndex((d: Document) => d.id === req.params.id);
   if (idx === -1) return res.status(404).json({ message: "დოკუმენტი ვერ მოიძებნა" });
   const actor = data.users.find((u: User) => u.id === userId);
-  if (!actor || ![UserRole.ADMIN, UserRole.MANAGER, UserRole.SIGNER].includes(actor.role)) {
-    return res.status(403).json({ message: "დოკუმენტის გაუქმება მხოლოდ ადმინისტრატორს ან დირექტორს შეუძლია" });
+  if (!actor) {
+    return res.status(403).json({ message: "ავტორიზაცია საჭიროა" });
   }
 
   data.documents[idx].status = DocumentStatus.CANCELLED;
@@ -725,22 +806,6 @@ app.delete("/api/files/:id", (req, res) => {
   res.json({ message: "ფაილი წაიშალა" });
 });
 
-// Basis documents / Old document linking
-app.get("/api/documents/search-basis", (req, res) => {
-  const { query } = req.query;
-  const data = getDb();
-  if (!query) return res.json([]);
-  const q = (query as string).toLowerCase();
-
-  const results = data.documents.filter(
-    (d: any) =>
-      d.documentNumber?.toLowerCase().includes(q) ||
-      d.registrationNumber?.toLowerCase().includes(q) ||
-      d.subject.toLowerCase().includes(q)
-  );
-  res.json(results);
-});
-
 app.post("/api/documents/:id/basis-links", (req, res) => {
   const { basisDocumentId, relationshipType, comment, userId } = req.body;
   const data = getDb();
@@ -857,7 +922,12 @@ app.get("/api/recipients/search", (req, res) => {
   if (!query) return res.json(data.external_contacts);
   const q = (query as string).toLowerCase();
 
-  const contacts = data.external_contacts.filter((c: any) => c.name.toLowerCase().includes(q) || c.organization.toLowerCase().includes(q));
+  const contacts = (data.external_contacts || []).filter((c: any) =>
+    c.name?.toLowerCase().includes(q) ||
+    c.organization?.toLowerCase().includes(q) ||
+    c.taxId?.toLowerCase().includes(q) ||
+    c.address?.toLowerCase().includes(q)
+  );
   res.json(contacts);
 });
 

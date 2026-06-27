@@ -111,11 +111,13 @@ function getCurrentUserId(request: Request) {
 }
 
 function filterDocuments(documents: any[], url: URL) {
-  const q = url.searchParams.get("q")?.toLowerCase();
+  const q = (url.searchParams.get("q") || url.searchParams.get("search") || "").toLowerCase();
   const status = url.searchParams.get("status");
   const category = url.searchParams.get("category");
+  const entryNumber = url.searchParams.get("entryNumber")?.toLowerCase();
   return documents.filter((doc) => {
-    if (q && !`${doc.subject} ${doc.description} ${doc.documentNumber || ""}`.toLowerCase().includes(q)) return false;
+    if (q && !`${doc.subject || ""} ${doc.description || ""} ${doc.documentNumber || ""} ${doc.registrationNumber || ""} ${doc.entryNumber || ""} ${doc.body || ""}`.toLowerCase().includes(q)) return false;
+    if (entryNumber && !`${doc.entryNumber || ""}`.toLowerCase().includes(entryNumber)) return false;
     if (status && status !== "ALL" && doc.status !== status) return false;
     if (category && category !== "ALL" && doc.category !== category) return false;
     return true;
@@ -138,8 +140,11 @@ async function handleApi(request: Request, init?: RequestInit) {
 
   if (parts[0] === "auth" && parts[1] === "login" && method === "POST") {
     const body = await readBody(init);
-    const user = db.users.find((u) => u.email === body.email && (!u.password || u.password === body.password));
-    if (!user) return json({ message: "არასწორი ელ-ფოსტა ან პაროლი" }, { status: 401 });
+    const login = String(body.username ?? body.email ?? "").trim();
+    const user = db.users.find(
+      (u) => (u.username === login || u.email === login) && (!u.password || u.password === body.password)
+    );
+    if (!user) return json({ message: "არასწორი მომხმარებელი ან პაროლი" }, { status: 401 });
     return json({ token: `jwt-mock-token-${user.id}`, user });
   }
 
@@ -150,8 +155,69 @@ async function handleApi(request: Request, init?: RequestInit) {
 
   if (parts[0] === "auth") return json({ ok: true });
 
+  if (parts[0] === "files") {
+    db.document_files = db.document_files || [];
+    const file = db.document_files.find((f: any) => f.id === parts[1]);
+    if (parts[2] === "download") {
+      if (!file) return json({ message: "ფაილი ვერ მოიძებნა" }, { status: 404 });
+      return json({ filename: file.filename, mimeType: file.mimeType, base64Data: file.storageKey });
+    }
+    if (method === "DELETE") {
+      db.document_files = db.document_files.filter((f: any) => f.id !== parts[1]);
+      if (file) {
+        const owner = db.documents.find((d) => d.id === file.documentId);
+        if (owner) owner.attachmentCount = Math.max(0, (owner.attachmentCount || 0) - 1);
+      }
+      writeDb(db);
+      return json({ message: "ფაილი წაიშალა" });
+    }
+  }
+
   if (parts[0] === "reports") return json([]);
-  if (parts[0] === "recipients" && parts[1] === "search") return json(db.users || []);
+  if (parts[0] === "recipients" && parts[1] === "search") {
+    const q = (url.searchParams.get("query") || "").toLowerCase();
+    const contacts = (db.external_contacts || []).filter((c: any) =>
+      !q ||
+      c.name?.toLowerCase().includes(q) ||
+      c.organization?.toLowerCase().includes(q) ||
+      c.taxId?.toLowerCase().includes(q) ||
+      c.address?.toLowerCase().includes(q)
+    );
+    return json(contacts);
+  }
+  if (parts[0] === "documents" && parts[1] === "search-basis") {
+    const text = (url.searchParams.get("query") || url.searchParams.get("q") || "").toLowerCase();
+    const documentNumber = url.searchParams.get("documentNumber")?.toLowerCase();
+    const entryNumber = url.searchParams.get("entryNumber")?.toLowerCase();
+    const subject = url.searchParams.get("subject")?.toLowerCase();
+    const author = url.searchParams.get("author");
+    const category = url.searchParams.get("category");
+    const type = url.searchParams.get("type");
+    const dateFrom = url.searchParams.get("dateFrom");
+    const dateTo = url.searchParams.get("dateTo");
+    const hasAny = text || documentNumber || entryNumber || subject || author || category || type || dateFrom || dateTo;
+    if (!hasAny) return json([]);
+    const results = (db.documents || []).filter((d: any) => {
+      if (text) {
+        const m = d.documentNumber?.toLowerCase().includes(text) ||
+          d.registrationNumber?.toLowerCase().includes(text) ||
+          d.entryNumber?.toLowerCase().includes(text) ||
+          d.subject?.toLowerCase().includes(text) ||
+          d.body?.toLowerCase().includes(text);
+        if (!m) return false;
+      }
+      if (documentNumber && !d.documentNumber?.toLowerCase().includes(documentNumber)) return false;
+      if (entryNumber && !d.entryNumber?.toLowerCase().includes(entryNumber)) return false;
+      if (subject && !d.subject?.toLowerCase().includes(subject)) return false;
+      if (author && d.authorId !== author) return false;
+      if (category && d.category !== category) return false;
+      if (type && d.documentType !== type) return false;
+      if (dateFrom && (d.documentDate || d.createdAt) < dateFrom) return false;
+      if (dateTo && (d.documentDate || d.createdAt) > dateTo + "￿") return false;
+      return true;
+    });
+    return json(results);
+  }
   if (parts[0] === "admin" && parts[1] === "settings") return json({ appName: "DocFlow Georgia" });
 
   if (parts[0] === "admin" && parts[1] === "users" && parts[3] === "signature-profile") {
@@ -232,6 +298,26 @@ async function handleApi(request: Request, init?: RequestInit) {
       return json(created, { status: 201 });
     }
     if (!doc) return json({ message: "დოკუმენტი ვერ მოიძებნა" }, { status: 404 });
+    if (method === "DELETE" && parts.length === 2) {
+      const requester = db.users.find((u) => u.id === userId);
+      if (!requester || requester.role !== "ADMIN") {
+        return json({ message: "დოკუმენტის სრულად წაშლა მხოლოდ ადმინისტრატორს შეუძლია" }, { status: 403 });
+      }
+      const byDoc = (arr?: any[]) => (arr || []).filter((x: any) => x.documentId !== docId);
+      db.documents = db.documents.filter((d) => d.id !== docId);
+      db.document_versions = byDoc(db.document_versions);
+      db.document_files = byDoc(db.document_files);
+      db.document_recipients = byDoc(db.document_recipients);
+      db.document_addressees = byDoc(db.document_addressees);
+      db.document_basis_links = byDoc(db.document_basis_links);
+      db.document_related_links = byDoc(db.document_related_links);
+      db.document_external_resolution_links = byDoc(db.document_external_resolution_links);
+      db.visa_actions = byDoc(db.visa_actions);
+      db.resolutions = byDoc(db.resolutions);
+      db.tasks = byDoc(db.tasks);
+      writeDb(db);
+      return json({ message: "დოკუმენტი სრულად წაიშალა" });
+    }
     if (method === "GET" && parts.length === 2) return json(doc);
     if (method === "PATCH" && parts.length === 2) {
       Object.assign(doc, await readBody(init), { updatedBy: userId, updatedAt: new Date().toISOString() });
@@ -246,7 +332,29 @@ async function handleApi(request: Request, init?: RequestInit) {
         return json({ body: doc.body });
       }
     }
-    if (parts[2] === "files") return json(db.document_files.filter((f) => f.documentId === docId));
+    if (parts[2] === "files") {
+      db.document_files = db.document_files || [];
+      if (method === "POST") {
+        const body = await readBody(init);
+        const created = {
+          id: nextId("file"),
+          documentId: docId,
+          filename: body.filename,
+          storageKey: body.base64Data,
+          mimeType: body.mimeType,
+          size: body.size,
+          hash: "sha256-mock-" + Math.random().toString(36).slice(2, 9),
+          uploaderId: body.uploaderId || userId,
+          uploadDate: new Date().toISOString(),
+          fileType: body.fileType || "ATTACHMENT",
+        };
+        db.document_files.push(created);
+        doc.attachmentCount = (doc.attachmentCount || 0) + 1;
+        writeDb(db);
+        return json(created, { status: 201 });
+      }
+      return json(db.document_files.filter((f) => f.documentId === docId));
+    }
     if (parts[2] === "recipients" && method === "GET") return json(db.document_recipients.filter((r) => r.documentId === docId));
     if (parts[2] === "recipients" && method === "POST") {
       const created = { ...(await readBody(init)), id: nextId("rec"), documentId: docId };
