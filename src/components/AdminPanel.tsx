@@ -927,10 +927,10 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
                       <label className="text-xxs font-semibold text-indigo-600 mb-1">ატვირთეთ Letterhead (ზედა ლოგო/ბანერი)</label>
                       <label className="border border-dashed border-slate-200 rounded-lg p-2 bg-slate-50 text-center cursor-pointer hover:bg-slate-100 transition text-[11px] font-sans text-slate-600">
                         {newTemplate.headerImage ? "✓ ბანერი ატვირთულია" : "აირჩიეთ ფაილი (PNG/JPG)..."}
-                        <input type="file" onChange={(e) => handleTemplateImageUpload("header", e)} className="hidden" />
+                        <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => handleTemplateImageUpload("header", e)} className="hidden" />
                       </label>
                       {newTemplate.headerImage && (
-                        <img src={newTemplate.headerImage} className="w-full h-8 object-contain mt-1 rounded border border-slate-100" />
+                        <img src={newTemplate.headerImage} className="w-full max-h-44 object-contain mt-2 rounded border border-slate-100 bg-white" />
                       )}
                     </div>
 
@@ -938,10 +938,10 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
                       <label className="text-xxs font-semibold text-indigo-600 mb-1">ატვირთეთ Footer (ქვედა ბანერი/ფუუტერი)</label>
                       <label className="border border-dashed border-slate-200 rounded-lg p-2 bg-slate-50 text-center cursor-pointer hover:bg-slate-100 transition text-[11px] font-sans text-slate-600">
                         {newTemplate.footerImage ? "✓ ფუთერი ატვირთულია" : "აირჩიეთ ფაილი (PNG/JPG)..."}
-                        <input type="file" onChange={(e) => handleTemplateImageUpload("footer", e)} className="hidden" />
+                        <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => handleTemplateImageUpload("footer", e)} className="hidden" />
                       </label>
                       {newTemplate.footerImage && (
-                        <img src={newTemplate.footerImage} className="w-full h-8 object-contain mt-1 rounded border border-slate-100" />
+                        <img src={newTemplate.footerImage} className="w-full max-h-32 object-contain mt-2 rounded border border-slate-100 bg-white" />
                       )}
                     </div>
                   </div>
@@ -983,7 +983,7 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
                           <div>
                             <span className="text-[10px] text-slate-400 font-semibold block">Letterhead Banner:</span>
                             {tpl.headerImage ? (
-                              <img src={tpl.headerImage} className="h-10 object-contain rounded border border-slate-200 bg-white" />
+                              <img src={tpl.headerImage} className="w-full max-h-36 object-contain rounded border border-slate-200 bg-white" />
                             ) : (
                               <span className="text-xxs text-slate-400 italic font-sans block">არ არის</span>
                             )}
@@ -991,7 +991,7 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
                           <div>
                             <span className="text-[10px] text-slate-400 font-semibold block">Footer Banner:</span>
                             {tpl.footerImage ? (
-                              <img src={tpl.footerImage} className="h-10 object-contain rounded border border-slate-200 bg-white" />
+                              <img src={tpl.footerImage} className="w-full max-h-28 object-contain rounded border border-slate-200 bg-white" />
                             ) : (
                               <span className="text-xxs text-slate-400 italic font-sans block">არ არის</span>
                             )}
@@ -1052,7 +1052,7 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
 
                       <label className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded text-xxs font-sans font-bold cursor-pointer transition">
                         ატვირთვა
-                        <input type="file" onChange={(e) => handleSignatureUpload(u.id, e)} className="hidden" />
+                        <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => handleSignatureUpload(u.id, e)} className="hidden" />
                       </label>
                     </div>
                   </div>

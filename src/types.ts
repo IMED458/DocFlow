@@ -144,6 +144,7 @@ export interface Document {
   updatedBy: string;
   updatedAt: string;
   signedAt?: string;
+  signedById?: string;
   archivedAt?: string;
   cancelledAt?: string;
 }

@@ -426,13 +426,13 @@ export default function DocumentDetails({
   // Send to Visa Approvers
   const handleSendToVisa = async () => {
     try {
-      const res = await fetch(`/api/documents/${doc.id}/send-to-visa`, {
+      const res = await fetch(`/api/documents/${doc.id}/visa/send`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer jwt-mock-token-${currentUser.id}`
         },
-        body: JSON.stringify({ visaUserIds: selectedVisaUsers })
+        body: JSON.stringify({ visaUsers: selectedVisaUsers, userId: currentUser.id })
       });
       if (res.ok) {
         setSelectedVisaUsers([]);
@@ -447,13 +447,14 @@ export default function DocumentDetails({
   // Approve / Return / Reject Visa
   const handleVisaAction = async (action: "approve" | "return" | "reject") => {
     try {
-      const res = await fetch(`/api/documents/${doc.id}/visa-action`, {
+      const endpoint = action === "approve" ? "approve" : action === "return" ? "return" : "reject";
+      const res = await fetch(`/api/documents/${doc.id}/visa/${endpoint}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer jwt-mock-token-${currentUser.id}`
         },
-        body: JSON.stringify({ userId: currentUser.id, action, comment: newComment })
+        body: JSON.stringify({ userId: currentUser.id, comment: newComment })
       });
       if (res.ok) {
         setNewComment("");
@@ -468,13 +469,13 @@ export default function DocumentDetails({
   // Request final signer signature
   const handleRequestSignature = async () => {
     try {
-      const res = await fetch(`/api/documents/${doc.id}/request-signature`, {
+      const res = await fetch(`/api/documents/${doc.id}/signature/request`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer jwt-mock-token-${currentUser.id}`
         },
-        body: JSON.stringify({ signerId: selectedSigner })
+        body: JSON.stringify({ signerId: selectedSigner, userId: currentUser.id })
       });
       if (res.ok) {
         setSelectedSigner("");
@@ -600,7 +601,8 @@ export default function DocumentDetails({
 
   // Helper templates
   const defaultTemplate = templates.find(t => t.isDefault) || templates[0];
-  const defaultStamp = stamps[0];
+  const signedAction = visaHistory.find((h: any) => h.role === "SIGN" && h.status === VisaActionStatus.APPROVED);
+  const signerId = doc.signedById || signedAction?.userId || doc.authorId;
 
   return (
     <div className="space-y-6">
@@ -737,150 +739,66 @@ export default function DocumentDetails({
               </div>
             ) : (
               /* A4 Printable Sheet Display */
-              <div className="bg-slate-500 p-4 sm:p-8 rounded-2xl flex flex-col items-center overflow-x-auto">
-                <div id="printable-doc" className="bg-white w-[210mm] min-h-[297mm] p-12 shadow-2xl relative text-slate-800 font-sans flex flex-col justify-between">
-                  <div>
-                    {/* Banner Header Template */}
-                    <div className="border-b-2 border-slate-900 pb-4 flex items-center justify-between gap-4">
+              <div className="bg-slate-500 p-4 sm:p-8 rounded-2xl flex flex-col items-center overflow-x-auto print:bg-white print:p-0">
+                <div id="printable-doc" className="bg-white w-[210mm] min-h-[297mm] px-[18mm] py-[16mm] shadow-2xl relative text-slate-900 font-sans flex flex-col print:shadow-none">
+                  <div className="flex-1">
+                    <div className="pb-7 border-b-2 border-slate-900">
                       {defaultTemplate?.headerImage ? (
-                        <img src={defaultTemplate.headerImage} className="w-full h-16 object-contain" alt="Header" />
+                        <img src={defaultTemplate.headerImage} className="block w-full max-h-[42mm] object-contain object-center" alt="Header" />
                       ) : (
-                        <>
-                          <div>
-                            <h4 className="text-sm font-bold font-display uppercase tracking-wider text-slate-900">
-                              {defaultTemplate?.headerTextGeo || "საქართველოს განათლებისა და მეცნიერების სამინისტრო"}
-                            </h4>
-                            <p className="text-xxs text-slate-500 font-sans mt-1">
-                              {defaultTemplate?.headerTextEng || "Ministry of Education and Science of Georgia"}
-                            </p>
-                          </div>
-                          {/* Coat of arms mockup */}
-                          <div className="w-12 h-12 border-2 border-slate-900 rounded-full flex items-center justify-center text-center text-xxs font-bold p-1 shrink-0">
-                            ღერბი
-                          </div>
-                        </>
+                        <div className="text-center">
+                          <h4 className="text-lg font-bold font-display text-slate-950">
+                            {defaultTemplate?.headerTextGeo || "ორგანიზაციის დასახელება"}
+                          </h4>
+                          {defaultTemplate?.headerTextEng && (
+                            <p className="text-xs text-slate-500 font-sans mt-1">{defaultTemplate.headerTextEng}</p>
+                          )}
+                        </div>
                       )}
                     </div>
 
-                    {/* Header metadata row */}
-                    <div className="flex items-center justify-between text-[10px] font-sans text-slate-500 py-3 border-b border-slate-100">
-                      <div>
-                        <span>{defaultTemplate?.address || "დიმიტრი უზნაძის ქ. 52, თბილისი, საქართველო"}</span>
-                        <br />
-                        <span>ტელ: {defaultTemplate?.phone || "+995 32 2 200 220"} | {defaultTemplate?.email || "info@mes.gov.ge"}</span>
-                      </div>
-                      <div className="text-right">
-                        <span>საიდენტიფიკაციო კოდი: {defaultTemplate?.identificationCode || "203851536"}</span>
-                        <br />
-                        <span>ვებ-გვერდი: {defaultTemplate?.website || "www.mes.gov.ge"}</span>
-                      </div>
+                    <div className="pt-7 text-right text-sm font-semibold text-slate-800">
+                      <span>დოკუმენტის ნომერი: {doc.documentNumber || "პროექტი"}</span>
                     </div>
 
-                    {/* Registered number/date and QR barcode */}
-                    <div className="flex items-start justify-between py-6">
-                      <div className="space-y-1">
-                        <span className="text-xs font-sans block font-semibold text-slate-700">
-                          თარიღი: <span className="font-mono text-xs">{doc.registrationDate || new Date().toISOString().split("T")[0]}</span>
-                        </span>
-                        <span className="text-xs font-sans block font-semibold text-slate-700">
-                          დოკუმენტის ნომერი: <span className="font-mono text-xs">{doc.documentNumber || "პროექტი"}</span>
-                        </span>
-                        <span className="text-xs font-sans block font-semibold text-slate-700">
-                          რეგისტრაციის ნომერი: <span className="font-mono text-xs">{doc.registrationNumber || "გაფორმების გარეშე"}</span>
-                        </span>
-                      </div>
-
-                      {/* QR Code Barcode Placeholder */}
-                      <div className="border border-slate-300 p-1.5 rounded bg-slate-50 flex flex-col items-center justify-center shrink-0">
-                        <div className="w-14 h-14 bg-slate-800 flex items-center justify-center text-white font-mono text-[5px] text-center p-1">
-                          QR კოდი
-                        </div>
-                        <span className="text-[6px] font-mono mt-1 text-slate-500">DOC-{doc.id.toUpperCase()}</span>
-                      </div>
-                    </div>
-
-                    {/* Document Title & Content */}
-                    <div className="space-y-6 mt-4">
-                      <h2 className="text-center text-base font-bold font-display uppercase tracking-wider text-slate-900 border-y border-slate-200 py-2">
+                    <div className="space-y-7 mt-9">
+                      <h2 className="text-center text-lg font-bold font-display text-slate-950">
                         {GEORGIAN_DOCUMENT_TYPES[doc.documentType]}
                       </h2>
 
-                      {/* Subject */}
-                      <p className="text-xs font-sans font-bold text-slate-800">
-                        საგანი: {doc.subject}
-                      </p>
-
-                      {/* Body Rich Text HTML renderer */}
                       <div
-                        className="prose max-w-none text-slate-800 font-sans text-xs leading-relaxed"
+                        className="prose max-w-none text-slate-900 font-sans text-[13px] leading-7 whitespace-pre-wrap break-words"
                         dangerouslySetInnerHTML={{ __html: doc.body || "<p class='text-slate-400 italic'>ტექსტი არ არის შევსებული</p>" }}
                       ></div>
                     </div>
                   </div>
 
-                  {/* Print bottom footer with sign and stamp */}
-                  <div className="mt-12 pt-6 border-t border-slate-200">
+                  <div className="mt-16 pt-6">
                     <div className="flex items-end justify-between">
-                      <div>
-                        <span className="text-[10px] font-sans text-slate-400 block">ხელმომწერი თანამდებობა:</span>
-                        <span className="font-sans font-bold text-xs text-slate-800 block">
-                          {getUserPositionAndDept(doc.authorId) || "ხელმძღვანელი"}
+                      <div className="min-w-[62mm]">
+                        <span className="font-sans font-bold text-sm text-slate-900 block">
+                          {getUserPositionAndDept(signerId) || "ხელმძღვანელი"}
                         </span>
-                        <span className="font-sans font-bold text-xs text-slate-700 block mt-1">
-                          {getUserName(doc.authorId)}
+                        <span className="font-sans font-bold text-sm text-slate-900 block mt-1">
+                          {getUserName(signerId)}
                         </span>
                       </div>
 
-                      {/* Transparent Signature and Organization Stamp images placement */}
-                      <div className="relative w-44 h-24 flex items-center justify-center">
-                        {/* Stamp image */}
-                        {doc.status === DocumentStatus.SIGNED && defaultStamp && (
+                      <div className="relative w-52 h-24 flex items-center justify-center">
+                        {doc.status === DocumentStatus.SIGNED && users.find(u => u.id === signerId)?.signatureImage && (
                           <img
-                            src={defaultStamp.imageUrl}
-                            alt="სამინისტროს ბეჭედი"
-                            className="absolute w-24 h-24 opacity-65 pointer-events-none select-none"
-                          />
-                        )}
-
-                        {/* Signature Image */}
-                        {doc.status === DocumentStatus.SIGNED && users.find(u => u.id === doc.authorId)?.signatureImage && (
-                          <img
-                            src={users.find(u => u.id === doc.authorId)?.signatureImage}
-                            alt="ავტორის ხელმოწერა"
-                            className="absolute w-28 h-20 rotate-[-5deg] z-10 pointer-events-none select-none"
+                            src={users.find(u => u.id === signerId)?.signatureImage}
+                            alt="ხელმოწერა"
+                            className="absolute w-40 h-20 object-contain z-10 pointer-events-none select-none"
                           />
                         )}
 
                         {doc.status !== DocumentStatus.SIGNED && (
-                          <span className="text-xxs font-sans text-slate-400 border border-dashed border-slate-300 px-3 py-1 rounded">
+                          <span className="text-xs font-sans text-slate-400 border-b border-slate-300 px-10 py-1">
                             ხელმოწერის ადგილი
                           </span>
                         )}
                       </div>
-                    </div>
-
-                    {/* Letterhead Footer Banner */}
-                    {defaultTemplate?.footerImage && (
-                      <div className="mt-6 border-t border-slate-100 pt-2">
-                        <img src={defaultTemplate.footerImage} className="w-full h-8 object-contain" alt="Footer Banner" />
-                      </div>
-                    )}
-
-                    {/* Watermarks if draft/cancelled */}
-                    {doc.status === DocumentStatus.DRAFT && (
-                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rotate-[-30deg] text-slate-200 text-6xl font-black font-display tracking-widest opacity-35 uppercase select-none pointer-events-none">
-                        პროექტი
-                      </div>
-                    )}
-                    {doc.status === DocumentStatus.CANCELLED && (
-                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rotate-[-30deg] text-rose-200 text-6xl font-black font-display tracking-widest opacity-35 uppercase select-none pointer-events-none">
-                        გაუქმებულია
-                      </div>
-                    )}
-
-                    {/* Pagination count */}
-                    <div className="text-center text-[9px] text-slate-400 font-sans mt-4">
-                      ფურცლების რაოდენობა: {doc.pageCount} | დანართების რაოდენობა: {files.length}
                     </div>
                   </div>
                 </div>

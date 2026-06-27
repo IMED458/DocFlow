@@ -122,7 +122,7 @@ export default function DocumentEditor({
   };
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 shadow-xs flex flex-col h-[600px] overflow-hidden">
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-xs flex flex-col min-h-[75vh] overflow-hidden">
       {/* Editor Toolbar */}
       <div className="bg-slate-50 border-b border-slate-100 p-3 flex flex-wrap items-center justify-between gap-2 z-10">
         <div className="flex items-center flex-wrap gap-1">
@@ -298,11 +298,11 @@ export default function DocumentEditor({
       {/* Editor Body and Versions Sidebar Split Pane */}
       <div className="flex flex-1 overflow-hidden">
         {/* Editor Writing Board */}
-        <div className="flex-1 overflow-y-auto p-8 bg-slate-50 flex justify-center">
-          <div className="bg-white w-full max-w-4xl p-12 min-h-[500px] border border-slate-200/60 rounded-xl shadow-xs focus:outline-hidden">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-50 flex justify-center">
+          <div className="bg-white w-full max-w-5xl p-6 sm:p-12 min-h-[70vh] border border-slate-200/60 rounded-xl shadow-xs focus:outline-hidden">
             {isReadOnly ? (
               <div
-                className="prose max-w-none text-slate-800 font-sans leading-relaxed"
+                className="prose max-w-none text-slate-800 font-sans leading-relaxed whitespace-pre-wrap break-words"
                 dangerouslySetInnerHTML={{ __html: body || "<p className='text-slate-400 italic'>ტექსტი ცარიელია</p>" }}
               ></div>
             ) : (
@@ -311,7 +311,7 @@ export default function DocumentEditor({
                 contentEditable
                 suppressContentEditableWarning
                 onBlur={e => setBody(e.target.innerHTML)}
-                className="min-h-[400px] focus:outline-hidden font-sans text-slate-800 leading-relaxed text-sm outline-hidden"
+                className="min-h-[64vh] focus:outline-hidden font-sans text-slate-800 leading-relaxed text-sm outline-hidden whitespace-pre-wrap break-words"
                 dangerouslySetInnerHTML={{ __html: body }}
                 placeholder="დაწერეთ დოკუმენტის შინაარსი ქართულად აქ..."
               ></div>

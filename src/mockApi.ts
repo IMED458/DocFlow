@@ -66,6 +66,16 @@ function nextId(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function assignDocumentNumber(db: Db, doc: any) {
+  if (doc.documentNumber) return;
+  const year = new Date().getFullYear();
+  const prefix = doc.category === "INCOMING" ? "IN" : doc.category === "OUTGOING" ? "OUT" : "INT";
+  const sequence = (db.documents || []).filter((item) => item.documentNumber?.startsWith(`${prefix}-${year}-`)).length + 1;
+  doc.documentNumber = `${prefix}-${year}-${String(sequence).padStart(6, "0")}`;
+  doc.registrationNumber = doc.registrationNumber || `REG-${year}-${String(sequence).padStart(6, "0")}`;
+  doc.registrationDate = doc.registrationDate || new Date().toISOString().split("T")[0];
+}
+
 function getCurrentUserId(request: Request) {
   const auth = request.headers.get("Authorization") || "";
   return auth.replace("Bearer jwt-mock-token-", "") || "usr-admin";
@@ -114,6 +124,22 @@ async function handleApi(request: Request, init?: RequestInit) {
   if (parts[0] === "reports") return json([]);
   if (parts[0] === "recipients" && parts[1] === "search") return json(db.users || []);
   if (parts[0] === "admin" && parts[1] === "settings") return json({ appName: "DocFlow Georgia" });
+
+  if (parts[0] === "admin" && parts[1] === "users" && parts[3] === "signature-profile") {
+    const user = db.users.find((u) => u.id === parts[2]);
+    if (!user) return json({ message: "მომხმარებელი ვერ მოიძებნა" }, { status: 404 });
+    if (method === "GET") return json({ signatureImage: user.signatureImage });
+    if (method === "POST") {
+      user.signatureImage = (await readBody(init)).signatureImage;
+      writeDb(db);
+      return json({ message: "ხელმოწერა აიტვირთა" });
+    }
+    if (method === "DELETE") {
+      delete user.signatureImage;
+      writeDb(db);
+      return json({ message: "ხელმოწერა წაიშალა" });
+    }
+  }
 
   const collectionName = parts[0] === "admin" ? parts[1] : parts[0];
   const collectionKey = collectionByApiName[collectionName];
@@ -175,6 +201,47 @@ async function handleApi(request: Request, init?: RequestInit) {
     if (parts[2] === "versions") return json(db.document_versions.filter((v) => v.documentId === docId));
     if (parts[2] === "visa-history") return json(db.visa_actions.filter((v) => v.documentId === docId));
     if (parts[2] === "resolutions") return json(db.resolutions.filter((r) => r.documentId === docId));
+    if (method === "POST" && parts[2] === "visa" && parts[3] === "send") {
+      const body = await readBody(init);
+      doc.status = "SENT_TO_VISA";
+      doc.visaStatus = "PENDING";
+      (body.visaUsers || []).forEach((visaUserId: string) => {
+        db.visa_actions.push({
+          id: nextId("visa-act"),
+          documentId: docId,
+          userId: visaUserId,
+          role: "VISA",
+          status: "PENDING",
+        });
+      });
+      writeDb(db);
+      return json(doc);
+    }
+    if (method === "POST" && parts[2] === "visa" && ["approve", "return", "reject"].includes(parts[3])) {
+      const action = db.visa_actions.find((item) => item.documentId === docId && item.userId === userId && item.role === "VISA" && item.status === "PENDING");
+      if (action) {
+        action.status = parts[3] === "approve" ? "APPROVED" : parts[3] === "return" ? "RETURNED" : "REJECTED";
+        action.actionDate = new Date().toISOString();
+      }
+      doc.status = parts[3] === "approve" ? "VISA_APPROVED" : parts[3] === "return" ? "VISA_RETURNED" : "REJECTED";
+      doc.visaStatus = parts[3] === "approve" ? "APPROVED" : parts[3] === "return" ? "RETURNED" : "REJECTED";
+      writeDb(db);
+      return json(doc);
+    }
+    if (method === "POST" && parts[2] === "signature" && parts[3] === "request") {
+      const body = await readBody(init);
+      doc.status = "SENT_TO_SIGN";
+      doc.signatureStatus = "PENDING";
+      db.visa_actions.push({
+        id: nextId("sign-act"),
+        documentId: docId,
+        userId: body.signerId,
+        role: "SIGN",
+        status: "PENDING",
+      });
+      writeDb(db);
+      return json(doc);
+    }
     if (method === "POST") {
       const statusByAction: Record<string, string> = {
         register: "REGISTERED",
@@ -187,6 +254,8 @@ async function handleApi(request: Request, init?: RequestInit) {
         "request-signature": "SENT_TO_SIGN",
         sign: "SIGNED",
       };
+      if (parts[2] === "send" || parts[2] === "register") assignDocumentNumber(db, doc);
+      if (parts[2] === "sign") doc.signedById = userId;
       doc.status = statusByAction[parts[2]] || doc.status;
       doc.updatedAt = new Date().toISOString();
       writeDb(db);

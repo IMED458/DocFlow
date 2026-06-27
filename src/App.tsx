@@ -66,7 +66,8 @@ export default function App() {
     priority: "NORMAL",
     confidentiality: "PUBLIC",
     sender: "",
-    recipient: ""
+    recipient: "",
+    body: ""
   });
 
   // Login Form Helpers
@@ -154,9 +155,9 @@ export default function App() {
           confidentiality: "PUBLIC",
           sender: "სამინისტროს შიდა აპარატი",
           recipient: "შიდა რეზოლუცია",
-          body: `<h3>ოფიციალური მიმართვა</h3>
-<p>გთხოვთ ჩაწეროთ დოკუმენტის ტექსტი აქ...</p>`,
+          body: `<p>გთხოვთ ჩაწეროთ დოკუმენტის ტექსტი აქ...</p>`,
           authorId: currentUser.id,
+          departmentId: currentUser.departmentId,
           responsibleId: currentUser.id,
           pageCount: 1,
           attachmentCount: 0
@@ -189,11 +190,15 @@ export default function App() {
         body: JSON.stringify({
           ...newDoc,
           authorId: currentUser.id,
-          responsibleId: currentUser.id
+          departmentId: currentUser.departmentId,
+          responsibleId: currentUser.id,
+          pageCount: 1,
+          attachmentCount: 0
         })
       });
 
       if (res.ok) {
+        const createdDoc = await res.json();
         // Reset and switch
         setNewDoc({
           subject: "",
@@ -203,9 +208,11 @@ export default function App() {
           priority: "NORMAL",
           confidentiality: "PUBLIC",
           sender: "",
-          recipient: ""
+          recipient: "",
+          body: ""
         });
-        loadInitialData(currentUser);
+        await loadInitialData(currentUser);
+        setSelectedDocId(createdDoc.id);
         setActiveTab("list");
       }
     } catch (e) {
@@ -425,7 +432,10 @@ export default function App() {
             </button>
 
             <button
-              onClick={handleCreateDocumentDirectly}
+              onClick={() => {
+                setActiveTab("new");
+                setSelectedDocId(null);
+              }}
               className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-xs font-sans font-semibold text-left transition text-slate-400 hover:bg-slate-800/40 hover:text-white"
             >
               <span className="flex items-center gap-2.5">
@@ -621,6 +631,117 @@ export default function App() {
                   onDeleteDraft={handleDeleteDraft}
                   onRefresh={() => loadInitialData(currentUser)}
                 />
+              )}
+
+              {activeTab === "new" && (
+                <div className="max-w-6xl mx-auto space-y-5">
+                  <div className="bg-white border border-slate-100 rounded-2xl p-6 shadow-xs">
+                    <h3 className="font-display font-bold text-slate-900 text-lg">ახალი დოკუმენტი</h3>
+                    <p className="text-xs text-slate-500 mt-1 font-sans">შეავსეთ ძირითადი ველები. შექმნის შემდეგ დოკუმენტი გაიხსნება ტექსტის რედაქტირებისთვის.</p>
+                  </div>
+
+                  <form onSubmit={handleCreateDocument} className="bg-white border border-slate-100 rounded-2xl p-6 shadow-xs space-y-5">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <label className="flex flex-col gap-1.5 text-xs font-semibold text-slate-600">
+                        კატეგორია
+                        <select
+                          value={newDoc.category}
+                          onChange={e => setNewDoc({ ...newDoc, category: e.target.value as DocumentCategory })}
+                          className="border border-slate-200 rounded-xl p-3 text-sm font-sans bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-100"
+                        >
+                          {Object.values(DocumentCategory).map(cat => (
+                            <option key={cat} value={cat}>{GEORGIAN_CATEGORIES[cat]}</option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label className="flex flex-col gap-1.5 text-xs font-semibold text-slate-600">
+                        ტიპი
+                        <select
+                          value={newDoc.documentType}
+                          onChange={e => setNewDoc({ ...newDoc, documentType: e.target.value as DocumentType })}
+                          className="border border-slate-200 rounded-xl p-3 text-sm font-sans bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-100"
+                        >
+                          {Object.values(DocumentType).map(type => (
+                            <option key={type} value={type}>{GEORGIAN_DOCUMENT_TYPES[type]}</option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label className="flex flex-col gap-1.5 text-xs font-semibold text-slate-600">
+                        პრიორიტეტი
+                        <select
+                          value={newDoc.priority}
+                          onChange={e => setNewDoc({ ...newDoc, priority: e.target.value })}
+                          className="border border-slate-200 rounded-xl p-3 text-sm font-sans bg-white focus:outline-hidden focus:ring-2 focus:ring-indigo-100"
+                        >
+                          <option value="LOW">დაბალი</option>
+                          <option value="NORMAL">ჩვეულებრივი</option>
+                          <option value="HIGH">მაღალი</option>
+                          <option value="URGENT">სასწრაფო</option>
+                        </select>
+                      </label>
+                    </div>
+
+                    <label className="flex flex-col gap-1.5 text-xs font-semibold text-slate-600">
+                      სათაური
+                      <input
+                        value={newDoc.subject}
+                        onChange={e => setNewDoc({ ...newDoc, subject: e.target.value })}
+                        required
+                        className="border border-slate-200 rounded-xl p-3 text-sm font-sans focus:outline-hidden focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </label>
+
+                    <label className="flex flex-col gap-1.5 text-xs font-semibold text-slate-600">
+                      მოკლე აღწერა
+                      <textarea
+                        value={newDoc.description}
+                        onChange={e => setNewDoc({ ...newDoc, description: e.target.value })}
+                        rows={3}
+                        className="border border-slate-200 rounded-xl p-3 text-sm font-sans leading-6 resize-y min-h-28 focus:outline-hidden focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </label>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <label className="flex flex-col gap-1.5 text-xs font-semibold text-slate-600">
+                        გამგზავნი
+                        <input
+                          value={newDoc.sender}
+                          onChange={e => setNewDoc({ ...newDoc, sender: e.target.value })}
+                          className="border border-slate-200 rounded-xl p-3 text-sm font-sans focus:outline-hidden focus:ring-2 focus:ring-indigo-100"
+                        />
+                      </label>
+                      <label className="flex flex-col gap-1.5 text-xs font-semibold text-slate-600">
+                        მიმღები
+                        <input
+                          value={newDoc.recipient}
+                          onChange={e => setNewDoc({ ...newDoc, recipient: e.target.value })}
+                          className="border border-slate-200 rounded-xl p-3 text-sm font-sans focus:outline-hidden focus:ring-2 focus:ring-indigo-100"
+                        />
+                      </label>
+                    </div>
+
+                    <label className="flex flex-col gap-1.5 text-xs font-semibold text-slate-600">
+                      ტექსტი
+                      <textarea
+                        value={newDoc.body}
+                        onChange={e => setNewDoc({ ...newDoc, body: e.target.value })}
+                        rows={10}
+                        className="border border-slate-200 rounded-xl p-4 text-sm font-sans leading-7 resize-y min-h-72 focus:outline-hidden focus:ring-2 focus:ring-indigo-100"
+                      />
+                    </label>
+
+                    <div className="flex justify-end gap-2 pt-2">
+                      <button type="button" onClick={() => setActiveTab("list")} className="px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-xs font-semibold font-sans">
+                        გაუქმება
+                      </button>
+                      <button type="submit" className="px-5 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-semibold font-sans hover:bg-slate-800">
+                        დოკუმენტის შექმნა
+                      </button>
+                    </div>
+                  </form>
+                </div>
               )}
 
               {/* Tab: Admin Panel */}

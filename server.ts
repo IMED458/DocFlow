@@ -136,6 +136,34 @@ app.use(express.urlencoded({ limit: "20mb", extended: true }));
 
 const PORT = Number(process.env.PORT) || 3000;
 
+function assignDocumentNumber(data: any, doc: Document) {
+  if (doc.documentNumber) return doc.documentNumber;
+
+  const rule = data.numbering_rules.find((r: NumberingRule) => r.category === doc.category) || data.numbering_rules[0];
+  const seq = data.numbering_sequences.find((s: any) => s.ruleId === rule.id);
+  let nextNum = 100001;
+
+  if (seq) {
+    seq.currentNumber += 1;
+    nextNum = seq.currentNumber;
+  } else {
+    data.numbering_sequences.push({
+      id: "seq-" + Math.random().toString(36).substring(2, 9),
+      ruleId: rule.id,
+      currentNumber: nextNum,
+      year: new Date().getFullYear()
+    });
+  }
+
+  const paddedNum = String(nextNum).padStart(rule.sequenceLength, "0");
+  const year = new Date().getFullYear();
+  const yearStr = rule.yearFormat === "YYYY" ? year : rule.yearFormat === "YY" ? String(year).slice(-2) : "";
+  doc.documentNumber = `${rule.prefix}${rule.separator}${yearStr}${rule.separator}${paddedNum}`.trim();
+  doc.registrationNumber = doc.registrationNumber || `REG-${year}-${Math.floor(Math.random() * 90000 + 10000)}`;
+  doc.registrationDate = doc.registrationDate || new Date().toISOString().split("T")[0];
+  return doc.documentNumber;
+}
+
 // API Auth routes
 app.post("/api/auth/login", (req, res) => {
   const { email, password } = req.body;
@@ -435,31 +463,8 @@ app.post("/api/documents/:id/register", (req, res) => {
 
   const doc = data.documents[idx];
 
-  // Assign numbers according to sequential numbering rules
-  const rule = data.numbering_rules.find((r: NumberingRule) => r.category === doc.category) || data.numbering_rules[0];
-  const seq = data.numbering_sequences.find((s: any) => s.ruleId === rule.id);
-
-  let nextNum = 100001;
-  if (seq) {
-    seq.currentNumber += 1;
-    nextNum = seq.currentNumber;
-  } else {
-    data.numbering_sequences.push({
-      id: "seq-" + Math.random().toString(36).substring(2, 9),
-      ruleId: rule.id,
-      currentNumber: nextNum,
-      year: new Date().getFullYear()
-    });
-  }
-
-  const paddedNum = String(nextNum).padStart(rule.sequenceLength, "0");
-  const yearStr = rule.yearFormat === "YYYY" ? new Date().getFullYear() : rule.yearFormat === "YY" ? String(new Date().getFullYear()).slice(-2) : "";
-  const docNumber = `${rule.prefix}${rule.separator}${yearStr}${rule.separator}${paddedNum}`.trim();
-
   doc.status = DocumentStatus.REGISTERED;
-  doc.documentNumber = docNumber;
-  doc.registrationNumber = "REG-" + new Date().getFullYear() + "-" + Math.floor(Math.random() * 90000 + 10000);
-  doc.registrationDate = new Date().toISOString().split("T")[0];
+  const docNumber = assignDocumentNumber(data, doc);
 
   saveDb(data);
   logAuditEvent(req.body.userId || "chancellery", "რეგისტრატორი", "REGISTER_DOCUMENT", "DOCUMENT", doc.id, null, { docNumber });
@@ -473,6 +478,7 @@ app.post("/api/documents/:id/send", (req, res) => {
   if (idx === -1) return res.status(404).json({ message: "დოკუმენტი ვერ მოიძებნა" });
 
   const doc = data.documents[idx];
+  assignDocumentNumber(data, doc);
   doc.status = DocumentStatus.SENT;
   saveDb(data);
 
@@ -963,6 +969,7 @@ app.post("/api/documents/:id/sign", (req, res) => {
   doc.status = DocumentStatus.SIGNED;
   doc.signatureStatus = "SIGNED";
   doc.signedAt = new Date().toISOString();
+  doc.signedById = userId;
 
   // Recalculate files hash if necessary
   saveDb(data);
