@@ -41,6 +41,8 @@ import DocumentDetails from "./components/DocumentDetails.js";
 import AdminPanel from "./components/AdminPanel.js";
 
 const SESSION_USER_KEY = "docflow-georgia-current-user";
+const SYNC_EVENT_NAME = "docflow:data-changed";
+const LIST_SYNC_INTERVAL_MS = 15000;
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -105,14 +107,32 @@ export default function App() {
     }
   };
 
-  // Mock auto refresh periodically
+  // Live workspace sync: immediate local events + calm background polling.
   useEffect(() => {
-    if (currentUser) {
+    if (!currentUser) return;
+    let disposed = false;
+    const sync = () => {
+      if (disposed || document.hidden) return;
       loadInitialData(currentUser);
-      const timer = setInterval(() => loadInitialData(currentUser), 10000);
-      return () => clearInterval(timer);
-    }
-  }, [currentUser]);
+    };
+    const syncWhenVisible = () => {
+      if (!document.hidden) sync();
+    };
+
+    sync();
+    const timer = window.setInterval(sync, LIST_SYNC_INTERVAL_MS);
+    window.addEventListener(SYNC_EVENT_NAME, sync);
+    window.addEventListener("focus", sync);
+    document.addEventListener("visibilitychange", syncWhenVisible);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+      window.removeEventListener(SYNC_EVENT_NAME, sync);
+      window.removeEventListener("focus", sync);
+      document.removeEventListener("visibilitychange", syncWhenVisible);
+    };
+  }, [currentUser?.id]);
 
   useEffect(() => {
     const saved = localStorage.getItem(SESSION_USER_KEY);

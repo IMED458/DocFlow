@@ -3,6 +3,11 @@ import { firebaseConfig } from "./firebase";
 
 type Db = Record<string, any[]>;
 
+const SYNC_EVENT_NAME = "docflow:data-changed";
+const SYNC_CHANNEL_NAME = "docflow-georgia-sync";
+const SYNC_STORAGE_KEY = "docflow-georgia-sync-pulse";
+const syncChannel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel(SYNC_CHANNEL_NAME) : null;
+
 const defaultDocumentTypes = [
   { id: "LETTER", label: "წერილი", isActive: true },
   { id: "REQUEST", label: "მოთხოვნა", isActive: true },
@@ -246,12 +251,23 @@ async function ensureLoaded(): Promise<Db> {
 // ცვლილებების Firestore-ში ჩაწერა — სერიულად, მხოლოდ ცვლილებები.
 let writeChain: Promise<void> = Promise.resolve();
 
+function notifyDataChanged() {
+  window.dispatchEvent(new CustomEvent(SYNC_EVENT_NAME, { detail: { at: Date.now() } }));
+  syncChannel?.postMessage({ type: "data-changed", at: Date.now() });
+  try {
+    localStorage.setItem(SYNC_STORAGE_KEY, String(Date.now()));
+  } catch {
+    /* cross-tab storage pulse is optional */
+  }
+}
+
 async function writeDb(db: Db) {
   const snapshot = structuredClone(db) as Db;
   cache = snapshot;
   const pendingWrite = writeChain.catch(() => undefined).then(() => persistChanges(snapshot));
   writeChain = pendingWrite.catch(() => undefined);
   await pendingWrite;
+  notifyDataChanged();
 }
 
 async function persistChanges(db: Db) {
@@ -929,6 +945,16 @@ export function installMockApi() {
   void ensureLoaded();
 
   const realFetch = window.fetch.bind(window);
+  syncChannel?.addEventListener("message", (event) => {
+    if (event.data?.type === "data-changed") {
+      window.dispatchEvent(new CustomEvent(SYNC_EVENT_NAME, { detail: event.data }));
+    }
+  });
+  window.addEventListener("storage", (event) => {
+    if (event.key === SYNC_STORAGE_KEY) {
+      window.dispatchEvent(new CustomEvent(SYNC_EVENT_NAME, { detail: { at: Number(event.newValue) || Date.now() } }));
+    }
+  });
   window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
     const request = new Request(input, init);
     const url = new URL(request.url);

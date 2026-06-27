@@ -48,6 +48,9 @@ interface DocumentDetailsProps {
   onRefresh: () => void;
 }
 
+const SYNC_EVENT_NAME = "docflow:data-changed";
+const DETAIL_SYNC_INTERVAL_MS = 6000;
+
 // Code39 შტრიხკოდის ცხრილი (9 ელემენტი თითო სიმბოლოზე, ზოლი/ფანჯარა მონაცვლეობით).
 const CODE39: Record<string, string> = {
   "0": "nnnwwnwnn", "1": "wnnwnnnnw", "2": "nnwwnnnnw", "3": "wnwwnnnnn", "4": "nnnwwnnnw",
@@ -260,8 +263,29 @@ export default function DocumentDetails({
   };
 
   useEffect(() => {
-    loadDetails();
-  }, [documentId]);
+    let disposed = false;
+    const sync = () => {
+      if (disposed || document.hidden) return;
+      loadDetails();
+    };
+    const syncWhenVisible = () => {
+      if (!document.hidden) sync();
+    };
+
+    sync();
+    const timer = window.setInterval(sync, DETAIL_SYNC_INTERVAL_MS);
+    window.addEventListener(SYNC_EVENT_NAME, sync);
+    window.addEventListener("focus", sync);
+    document.addEventListener("visibilitychange", syncWhenVisible);
+
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+      window.removeEventListener(SYNC_EVENT_NAME, sync);
+      window.removeEventListener("focus", sync);
+      document.removeEventListener("visibilitychange", syncWhenVisible);
+    };
+  }, [documentId, currentUser.id]);
 
   if (!doc) {
     return (
