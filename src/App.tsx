@@ -275,7 +275,7 @@ export default function App() {
 
   // Counters for left side folder hierarchy
   const draftCount = documents.filter(d => d.status === DocumentStatus.DRAFT).length;
-  const onVisaCount = documents.filter(d => d.status === DocumentStatus.ON_VISA).length;
+  const onVisaCount = documents.filter(d => d.status === DocumentStatus.ON_VISA || d.status === DocumentStatus.SENT_TO_VISA).length;
   const signingCount = documents.filter(d => d.status === DocumentStatus.SENT_TO_SIGN || d.signatureStatus === "PENDING").length;
   const signedCount = documents.filter(d => d.status === DocumentStatus.SIGNED).length;
   const overdueCount = documents.filter(d => d.status === DocumentStatus.OVERDUE).length;
@@ -448,9 +448,11 @@ export default function App() {
             <div className="space-y-1 text-xs">
               <button
                 onClick={() => {
-                  setListStatusFilter(DocumentStatus.DRAFT);
-                  setActiveTab("list");
-                }}
+	                setListStatusFilter(DocumentStatus.DRAFT);
+	                setListCategoryFilter("ALL");
+	                setActiveTab("list");
+	                setSelectedDocId(null);
+	              }}
                 className="w-full flex items-center justify-between px-4 py-2 rounded-lg text-slate-400 hover:bg-slate-800/30 hover:text-white text-left transition font-sans"
               >
                 <span>პროექტები (Drafts)</span>
@@ -459,9 +461,11 @@ export default function App() {
 
               <button
                 onClick={() => {
-                  setListStatusFilter(DocumentStatus.ON_VISA);
-                  setActiveTab("list");
-                }}
+	                  setListStatusFilter("VISA_FOLDER");
+	                  setListCategoryFilter("ALL");
+	                  setActiveTab("list");
+	                  setSelectedDocId(null);
+	                }}
                 className="w-full flex items-center justify-between px-4 py-2 rounded-lg text-slate-400 hover:bg-slate-800/30 hover:text-white text-left transition font-sans"
               >
                 <span>ვიზირებაზე</span>
@@ -470,9 +474,11 @@ export default function App() {
 
               <button
                 onClick={() => {
-                  setListStatusFilter(DocumentStatus.SIGNED);
-                  setActiveTab("list");
-                }}
+	                  setListStatusFilter(DocumentStatus.SIGNED);
+	                  setListCategoryFilter("ALL");
+	                  setActiveTab("list");
+	                  setSelectedDocId(null);
+	                }}
                 className="w-full flex items-center justify-between px-4 py-2 rounded-lg text-slate-400 hover:bg-slate-800/30 hover:text-white text-left transition font-sans"
               >
                 <span>ხელმოწერილი</span>
@@ -481,9 +487,11 @@ export default function App() {
 
               <button
                 onClick={() => {
-                  setListStatusFilter(DocumentStatus.SENT_TO_SIGN);
-                  setActiveTab("list");
-                }}
+	                  setListStatusFilter(DocumentStatus.SENT_TO_SIGN);
+	                  setListCategoryFilter("ALL");
+	                  setActiveTab("list");
+	                  setSelectedDocId(null);
+	                }}
                 className="w-full flex items-center justify-between px-4 py-2 rounded-lg text-slate-400 hover:bg-slate-800/30 hover:text-white text-left transition font-sans"
               >
                 <span>ხელმოსაწერი</span>
@@ -606,9 +614,11 @@ export default function App() {
               {/* Tab: List */}
               {activeTab === "list" && (
                 <DocumentList
-                  documents={
-                    listStatusFilter !== "ALL"
-                      ? documents.filter(d => d.status === listStatusFilter)
+	                  documents={
+	                    listStatusFilter === "VISA_FOLDER"
+	                      ? documents.filter(d => d.status === DocumentStatus.ON_VISA || d.status === DocumentStatus.SENT_TO_VISA)
+	                    : listStatusFilter !== "ALL"
+	                      ? documents.filter(d => d.status === listStatusFilter)
                       : listCategoryFilter !== "ALL"
                       ? documents.filter(d => d.category === listCategoryFilter)
                       : documents

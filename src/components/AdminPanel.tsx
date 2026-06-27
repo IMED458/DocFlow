@@ -25,7 +25,10 @@ import {
   NumberingRule,
   Stamp,
   AuditLog,
-  HeaderFooterTemplate
+  HeaderFooterTemplate,
+  DocumentType,
+  GEORGIAN_DOCUMENT_TYPES,
+  GEORGIAN_CATEGORIES
 } from "../types.js";
 
 interface AdminPanelProps {
@@ -40,6 +43,7 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
   const [stamps, setStamps] = useState<Stamp[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [positions, setPositions] = useState<any[]>([]);
+  const [departments, setDepartments] = useState<any[]>([]);
   const [templates, setTemplates] = useState<HeaderFooterTemplate[]>([]);
 
   // Editing states
@@ -52,14 +56,18 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
     personalNumber: "",
     email: "",
     phone: "",
-    role: UserRole.EXECUTOR,
-    stampPermission: false,
+	    role: UserRole.EXECUTOR,
+	    departmentId: "",
+	    stampPermission: false,
     positionName: "",
     password: ""
   });
 
   // Form Inputs - Positions list
   const [newPositionName, setNewPositionName] = useState("");
+  const [newPositionDepartmentId, setNewPositionDepartmentId] = useState("");
+  const [newDepartmentName, setNewDepartmentName] = useState("");
+  const [editingRule, setEditingRule] = useState<NumberingRule | null>(null);
 
   // Form Inputs - Templates list
   const [newTemplate, setNewTemplate] = useState({
@@ -88,14 +96,15 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
   const loadAdminData = async () => {
     try {
       const headers = { "Authorization": `Bearer jwt-mock-token-${currentUser.id}` };
-      const [resUsers, resContacts, resRules, resStamps, resAudit, resPositions, resTemplates] = await Promise.all([
+      const [resUsers, resContacts, resRules, resStamps, resAudit, resPositions, resTemplates, resDepartments] = await Promise.all([
         fetch("/api/users", { headers }).then(r => r.json()),
         fetch("/api/admin/external-contacts", { headers }).then(r => r.json()),
         fetch("/api/admin/numbering-rules", { headers }).then(r => r.json()),
         fetch("/api/admin/stamps", { headers }).then(r => r.json()),
         fetch("/api/audit-logs", { headers }).then(r => r.json()),
         fetch("/api/positions", { headers }).then(r => r.json()),
-        fetch("/api/admin/header-footer-templates", { headers }).then(r => r.json())
+        fetch("/api/admin/header-footer-templates", { headers }).then(r => r.json()),
+        fetch("/api/departments", { headers }).then(r => r.json())
       ]);
 
       setUsers(resUsers);
@@ -105,6 +114,7 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
       setAuditLogs(resAudit);
       setPositions(resPositions || []);
       setTemplates(resTemplates || []);
+      setDepartments(resDepartments || []);
     } catch (e) {
       console.error(e);
     }
@@ -136,8 +146,9 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
           personalNumber: "",
           email: "",
           phone: "",
-          role: UserRole.EXECUTOR,
-          stampPermission: false,
+	          role: UserRole.EXECUTOR,
+	          departmentId: "",
+	          stampPermission: false,
           positionName: "",
           password: ""
         });
@@ -222,10 +233,53 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
           "Content-Type": "application/json",
           "Authorization": `Bearer jwt-mock-token-${currentUser.id}`
         },
-        body: JSON.stringify({ name: newPositionName, departmentId: "dep-general" })
+        body: JSON.stringify({ name: newPositionName, departmentId: newPositionDepartmentId || departments[0]?.id || "dep-general" })
       });
       if (res.ok) {
         setNewPositionName("");
+        setNewPositionDepartmentId("");
+        loadAdminData();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleCreateDepartment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDepartmentName.trim()) return;
+    try {
+      const res = await fetch("/api/departments", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer jwt-mock-token-${currentUser.id}`
+        },
+        body: JSON.stringify({ name: newDepartmentName, organizationId: "org-1" })
+      });
+      if (res.ok) {
+        setNewDepartmentName("");
+        loadAdminData();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleUpdateNumberingRule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingRule) return;
+    try {
+      const res = await fetch(`/api/admin/numbering-rules/${editingRule.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer jwt-mock-token-${currentUser.id}`
+        },
+        body: JSON.stringify(editingRule)
+      });
+      if (res.ok) {
+        setEditingRule(null);
         loadAdminData();
       }
     } catch (e) {
@@ -417,8 +471,10 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
         {/* Left column sidebar admin nav */}
         <div className="space-y-1.5 bg-white p-3 rounded-2xl border border-slate-100 h-fit">
           {[
-            { id: "users", label: "მომხმარებლები", icon: Users },
-            { id: "positions_list", label: "თანამდებობების ნუსხა", icon: Building },
+	            { id: "users", label: "მომხმარებლები", icon: Users },
+	            { id: "departments", label: "დეპარტამენტები / განყოფილებები", icon: Building },
+	            { id: "positions_list", label: "თანამდებობების ნუსხა", icon: Building },
+	            { id: "document_types", label: "დოკუმენტის ტიპები", icon: FileCheck },
             { id: "templates", label: "შაბლონები (ბლანკები)", icon: Layout },
             { id: "signatures", label: "ხელმოწერები", icon: FileCheck },
             { id: "stamps", label: "ბეჭდები და შტამპები", icon: ShieldAlert },
@@ -507,8 +563,8 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
                           className="border border-slate-200 rounded-lg p-2 text-xs font-sans focus:outline-hidden"
                         />
                       </div>
-                      <div className="flex flex-col">
-                        <label className="text-xxs font-semibold text-slate-500 mb-1">როლი სისტემაში <span className="text-rose-500">*</span></label>
+	                      <div className="flex flex-col">
+	                        <label className="text-xxs font-semibold text-slate-500 mb-1">როლი სისტემაში <span className="text-rose-500">*</span></label>
                         <select
                           value={newUser.role}
                           onChange={e => setNewUser({ ...newUser, role: e.target.value as UserRole })}
@@ -517,11 +573,25 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
                           {Object.entries(GEORGIAN_ROLES).map(([k, v]) => (
                             <option key={k} value={k}>{v}</option>
                           ))}
-                        </select>
-                      </div>
+	                        </select>
+	                      </div>
 
-                      <div className="flex flex-col">
-                        <label className="text-xxs font-semibold text-slate-500 mb-1">თანამდებობა (აირჩიეთ ნუსხიდან)</label>
+	                      <div className="flex flex-col">
+	                        <label className="text-xxs font-semibold text-slate-500 mb-1">დეპარტამენტი / განყოფილება</label>
+	                        <select
+	                          value={newUser.departmentId || ""}
+	                          onChange={e => setNewUser({ ...newUser, departmentId: e.target.value, positionName: "" })}
+	                          className="border border-slate-200 rounded-lg p-2 text-xs font-sans focus:outline-hidden bg-white"
+	                        >
+	                          <option value="">— აირჩიეთ —</option>
+	                          {departments.map(dep => (
+	                            <option key={dep.id} value={dep.id}>{dep.name}</option>
+	                          ))}
+	                        </select>
+	                      </div>
+
+	                      <div className="flex flex-col">
+	                        <label className="text-xxs font-semibold text-slate-500 mb-1">თანამდებობა (აირჩიეთ ნუსხიდან)</label>
                         <select
                           onChange={e => {
                             if (e.target.value) {
@@ -531,9 +601,9 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
                           className="border border-slate-200 rounded-lg p-2 text-xs font-sans focus:outline-hidden bg-white"
                         >
                           <option value="">— აირჩიეთ —</option>
-                          {positions.map(p => (
-                            <option key={p.id} value={p.name}>{p.name}</option>
-                          ))}
+	                          {positions.filter(p => !newUser.departmentId || p.departmentId === newUser.departmentId).map(p => (
+	                            <option key={p.id} value={p.name}>{p.name}</option>
+	                          ))}
                         </select>
                       </div>
 
@@ -645,8 +715,8 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
                           className="border border-slate-200 rounded-lg p-2 text-xs font-sans bg-white focus:outline-hidden"
                         />
                       </div>
-                      <div className="flex flex-col">
-                        <label className="text-xxs font-semibold text-slate-500 mb-1">როლი სისტემაში</label>
+	                      <div className="flex flex-col">
+	                        <label className="text-xxs font-semibold text-slate-500 mb-1">როლი სისტემაში</label>
                         <select
                           value={editingUser.role}
                           onChange={e => setEditingUser({ ...editingUser, role: e.target.value as UserRole })}
@@ -655,11 +725,25 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
                           {Object.entries(GEORGIAN_ROLES).map(([k, v]) => (
                             <option key={k} value={k}>{v}</option>
                           ))}
-                        </select>
-                      </div>
+	                        </select>
+	                      </div>
 
-                      <div className="flex flex-col">
-                        <label className="text-xxs font-semibold text-slate-500 mb-1">თანამდებობა (აირჩიეთ ნუსხიდან)</label>
+	                      <div className="flex flex-col">
+	                        <label className="text-xxs font-semibold text-slate-500 mb-1">დეპარტამენტი / განყოფილება</label>
+	                        <select
+	                          value={editingUser.departmentId || ""}
+	                          onChange={e => setEditingUser({ ...editingUser, departmentId: e.target.value, positionName: "" })}
+	                          className="border border-slate-200 rounded-lg p-2 text-xs font-sans bg-white focus:outline-hidden"
+	                        >
+	                          <option value="">— აირჩიეთ —</option>
+	                          {departments.map(dep => (
+	                            <option key={dep.id} value={dep.id}>{dep.name}</option>
+	                          ))}
+	                        </select>
+	                      </div>
+
+	                      <div className="flex flex-col">
+	                        <label className="text-xxs font-semibold text-slate-500 mb-1">თანამდებობა (აირჩიეთ ნუსხიდან)</label>
                         <select
                           onChange={e => {
                             if (e.target.value) {
@@ -669,9 +753,9 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
                           className="border border-slate-200 rounded-lg p-2 text-xs font-sans focus:outline-hidden bg-white"
                         >
                           <option value="">— აირჩიეთ —</option>
-                          {positions.map(p => (
-                            <option key={p.id} value={p.name}>{p.name}</option>
-                          ))}
+	                          {positions.filter(p => !editingUser.departmentId || p.departmentId === editingUser.departmentId).map(p => (
+	                            <option key={p.id} value={p.name}>{p.name}</option>
+	                          ))}
                         </select>
                       </div>
 
@@ -792,21 +876,64 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
             </div>
           )}
 
-          {/* Tab 1b: Manage Positions List */}
-          {adminTab === "positions_list" && (
+	          {/* Tab 1a: Manage Departments */}
+	          {adminTab === "departments" && (
+	            <div className="space-y-6">
+	              <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-xs">
+	                <h3 className="text-base font-bold text-slate-800 font-display mb-4">დეპარტამენტები / განყოფილებები</h3>
+	                <form onSubmit={handleCreateDepartment} className="flex gap-3">
+	                  <input
+	                    type="text"
+	                    placeholder="დეპარტამენტის ან განყოფილების დასახელება..."
+	                    value={newDepartmentName}
+	                    onChange={e => setNewDepartmentName(e.target.value)}
+	                    required
+	                    className="border border-slate-200 rounded-lg p-2.5 text-xs font-sans focus:outline-hidden flex-1"
+	                  />
+	                  <button type="submit" className="bg-slate-900 hover:bg-slate-800 text-white rounded-lg px-5 text-xs font-sans font-semibold flex items-center gap-1 transition">
+	                    <Plus className="w-4 h-4" />
+	                    დამატება
+	                  </button>
+	                </form>
+	              </div>
+
+	              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+	                {departments.map(dep => (
+	                  <div key={dep.id} className="bg-white border border-slate-100 rounded-xl p-4">
+	                    <div className="font-bold text-slate-800 text-sm">{dep.name}</div>
+	                    <div className="text-xxs text-slate-400 mt-1">თანამდებობები: {positions.filter(p => p.departmentId === dep.id).length}</div>
+	                  </div>
+	                ))}
+	              </div>
+	            </div>
+	          )}
+
+	          {/* Tab 1b: Manage Positions List */}
+	          {adminTab === "positions_list" && (
             <div className="space-y-6">
               <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-xs">
                 <h3 className="text-base font-bold text-slate-800 font-display mb-4">თანამდებობების ნუსხის მართვა</h3>
-                <form onSubmit={handleCreatePosition} className="flex gap-3">
-                  <input
+	                <form onSubmit={handleCreatePosition} className="grid grid-cols-1 md:grid-cols-[1fr_220px_auto] gap-3">
+	                  <input
                     type="text"
                     placeholder="ჩაწერეთ ახალი თანამდებობის დასახელება..."
                     value={newPositionName}
                     onChange={e => setNewPositionName(e.target.value)}
                     required
-                    className="border border-slate-200 rounded-lg p-2.5 text-xs font-sans focus:outline-hidden flex-1"
-                  />
-                  <button
+	                    className="border border-slate-200 rounded-lg p-2.5 text-xs font-sans focus:outline-hidden flex-1"
+	                  />
+	                  <select
+	                    value={newPositionDepartmentId}
+	                    onChange={e => setNewPositionDepartmentId(e.target.value)}
+	                    required
+	                    className="border border-slate-200 rounded-lg p-2.5 text-xs font-sans focus:outline-hidden bg-white"
+	                  >
+	                    <option value="">დეპარტამენტი...</option>
+	                    {departments.map(dep => (
+	                      <option key={dep.id} value={dep.id}>{dep.name}</option>
+	                    ))}
+	                  </select>
+	                  <button
                     type="submit"
                     className="bg-slate-900 hover:bg-slate-800 text-white rounded-lg px-5 text-xs font-sans font-semibold flex items-center gap-1 transition"
                   >
@@ -821,18 +948,20 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
                   <thead>
                     <tr className="bg-slate-50 border-b border-slate-100 text-slate-600 text-xs font-sans font-semibold uppercase">
                       <th className="p-4">თანამდებობა</th>
-                      <th className="p-4 text-center w-24">წაშლა</th>
+	                      <th className="p-4">დეპარტამენტი</th>
+	                      <th className="p-4 text-center w-24">წაშლა</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-xs font-sans">
                     {positions.length === 0 ? (
                       <tr>
-                        <td colSpan={2} className="p-4 text-center text-slate-400 italic">თანამდებობების ნუსხა ცარიელია</td>
+	                        <td colSpan={3} className="p-4 text-center text-slate-400 italic">თანამდებობების ნუსხა ცარიელია</td>
                       </tr>
                     ) : (
                       positions.map(p => (
                         <tr key={p.id} className="hover:bg-slate-50 transition">
-                          <td className="p-4 text-slate-800 font-semibold">{p.name}</td>
+	                          <td className="p-4 text-slate-800 font-semibold">{p.name}</td>
+	                          <td className="p-4 text-slate-500">{departments.find(dep => dep.id === p.departmentId)?.name || "—"}</td>
                           <td className="p-4 text-center">
                             <button
                               onClick={() => handleDeletePosition(p.id)}
@@ -849,10 +978,30 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
                 </table>
               </div>
             </div>
-          )}
+	          )}
 
-          {/* Tab 1c: Manage Letterhead/Footer Templates */}
-          {adminTab === "templates" && (
+	          {/* Tab 1c: Document Types */}
+	          {adminTab === "document_types" && (
+	            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-xs space-y-4">
+	              <h3 className="text-base font-bold text-slate-800 font-display border-b border-slate-100 pb-3">
+	                დოკუმენტის ტიპები
+	              </h3>
+	              <p className="text-xs text-slate-500 font-sans">
+	                თანამშრომელი დოკუმენტის შექმნისას ვალდებულია აირჩიოს ტიპი. ამ ტიპებით ხდება ძებნა, ფილტრაცია და ნუმერაციის წესზე მიბმა.
+	              </p>
+	              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+	                {Object.entries(GEORGIAN_DOCUMENT_TYPES).map(([typeId, label]) => (
+	                  <div key={typeId} className="border border-slate-100 rounded-xl p-4 bg-slate-50">
+	                    <div className="font-bold text-sm text-slate-800">{label}</div>
+	                    <div className="text-xxs text-emerald-600 font-bold mt-2">აქტიური</div>
+	                  </div>
+	                ))}
+	              </div>
+	            </div>
+	          )}
+
+	          {/* Tab 1c: Manage Letterhead/Footer Templates */}
+	          {adminTab === "templates" && (
             <div className="space-y-6">
               {/* Create Template Form */}
               <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-xs">
@@ -1109,18 +1258,44 @@ export default function AdminPanel({ currentUser }: AdminPanelProps) {
                 ნუმერაციის წესები
               </h3>
 
-              <div className="space-y-4">
-                {rules.map(rule => (
-                  <div key={rule.id} className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
-                    <div>
-                      <span className="font-bold text-xs text-indigo-600 font-sans block">პრეფიქსი: {rule.prefix}</span>
-                      <p className="text-xs font-sans text-slate-600 mt-1">განმცალკევებელი: "{rule.separator}" | სიგრძე: {rule.sequenceLength}</p>
-                    </div>
-                    <span className="text-xxs font-sans text-emerald-600 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full font-bold">
-                      ყოველწლიური განახლება
-                    </span>
-                  </div>
-                ))}
+	              <div className="space-y-4">
+	                {editingRule && (
+	                  <form onSubmit={handleUpdateNumberingRule} className="p-4 bg-indigo-50 border border-indigo-100 rounded-xl grid grid-cols-1 md:grid-cols-3 gap-3">
+	                    <input value={editingRule.prefix} onChange={e => setEditingRule({ ...editingRule, prefix: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-xs" placeholder="პრეფიქსი" />
+	                    <input value={editingRule.separator} onChange={e => setEditingRule({ ...editingRule, separator: e.target.value })} className="border border-slate-200 rounded-lg p-2 text-xs" placeholder="გამყოფი" />
+	                    <input type="number" value={editingRule.sequenceLength} onChange={e => setEditingRule({ ...editingRule, sequenceLength: Number(e.target.value) })} className="border border-slate-200 rounded-lg p-2 text-xs" placeholder="სიგრძე" />
+	                    <select value={editingRule.yearFormat} onChange={e => setEditingRule({ ...editingRule, yearFormat: e.target.value as "YYYY" | "YY" | "NONE" })} className="border border-slate-200 rounded-lg p-2 text-xs bg-white">
+	                      <option value="YYYY">YYYY</option>
+	                      <option value="YY">YY</option>
+	                      <option value="NONE">წლის გარეშე</option>
+	                    </select>
+	                    <select value={editingRule.category || ""} onChange={e => setEditingRule({ ...editingRule, category: e.target.value as any })} className="border border-slate-200 rounded-lg p-2 text-xs bg-white">
+	                      <option value="">ყველა კატეგორია</option>
+	                      {Object.entries(GEORGIAN_CATEGORIES).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+	                    </select>
+	                    <select value={editingRule.documentType || ""} onChange={e => setEditingRule({ ...editingRule, documentType: e.target.value as DocumentType })} className="border border-slate-200 rounded-lg p-2 text-xs bg-white">
+	                      <option value="">ყველა ტიპი</option>
+	                      {Object.entries(GEORGIAN_DOCUMENT_TYPES).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+	                    </select>
+	                    <div className="md:col-span-3 flex justify-end gap-2">
+	                      <button type="button" onClick={() => setEditingRule(null)} className="px-4 py-2 text-xs font-bold rounded-lg border border-slate-200 bg-white">გაუქმება</button>
+	                      <button type="submit" className="px-4 py-2 text-xs font-bold rounded-lg bg-slate-900 text-white">შენახვა</button>
+	                    </div>
+	                  </form>
+	                )}
+	                {rules.map(rule => (
+	                  <div key={rule.id} className="p-4 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+	                    <div>
+	                      <span className="font-bold text-xs text-indigo-600 font-sans block">პრეფიქსი: {rule.prefix}</span>
+	                      <p className="text-xs font-sans text-slate-600 mt-1">
+	                        განმცალკევებელი: "{rule.separator}" | სიგრძე: {rule.sequenceLength} | ტიპი: {rule.documentType ? GEORGIAN_DOCUMENT_TYPES[rule.documentType] : "ყველა"}
+	                      </p>
+	                    </div>
+	                    <button onClick={() => setEditingRule(rule)} className="text-xxs font-sans text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1 rounded-lg font-bold">
+	                      რედაქტირება
+	                    </button>
+	                  </div>
+	                ))}
               </div>
             </div>
           )}

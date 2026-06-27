@@ -231,7 +231,11 @@ export default function DocumentDetails({
     try {
       const res = await fetch(`/api/documents/${doc.id}/cancel`, {
         method: "POST",
-        headers: { "Authorization": `Bearer jwt-mock-token-${currentUser.id}` }
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer jwt-mock-token-${currentUser.id}`
+        },
+        body: JSON.stringify({ userId: currentUser.id })
       });
       if (res.ok) {
         loadDetails();
@@ -720,7 +724,7 @@ export default function DocumentDetails({
   const signerId = doc.signedById || signedAction?.userId || doc.authorId;
   const printDate = doc.registrationDate || doc.documentDate || new Date().toISOString().split("T")[0];
   const formattedPrintDate = printDate.split("-").reverse().join("/");
-  const printNumber = doc.documentNumber || "პროექტი";
+  const printNumber = doc.documentNumber || doc.entryNumber || "";
   const documentAuthors = doc.authors && doc.authors.length > 0 ? doc.authors : [{
     id: `author-${doc.authorId}`,
     userId: doc.authorId,
@@ -730,6 +734,7 @@ export default function DocumentDetails({
   }];
   const canEditWorkflow = doc.status !== DocumentStatus.SIGNED && doc.status !== DocumentStatus.CANCELLED;
   const employeeUsers = users;
+  const canCancelDocument = [UserRole.ADMIN, UserRole.MANAGER, UserRole.SIGNER].includes(currentUser.role);
 
   return (
     <div className="space-y-6">
@@ -741,7 +746,7 @@ export default function DocumentDetails({
           </button>
           <div className="flex items-center gap-3">
             <h2 className="text-xl font-bold font-display text-slate-800">
-              {doc.documentNumber || "პროექტი (Draft)"}
+	              {doc.documentNumber || doc.entryNumber || "ახალი დოკუმენტი"}
             </h2>
             <span className="px-2.5 py-0.5 rounded-full text-xxs font-sans font-medium border bg-indigo-50 border-indigo-200 text-indigo-700">
               {GEORGIAN_CATEGORIES[doc.category]}
@@ -763,7 +768,7 @@ export default function DocumentDetails({
           )}
 
           {/* 2. Deactivate / Cancel */}
-          {doc.status !== DocumentStatus.CANCELLED && doc.status !== DocumentStatus.SIGNED && (
+	          {canCancelDocument && doc.status !== DocumentStatus.CANCELLED && doc.status !== DocumentStatus.SIGNED && (
             <button
               onClick={handleCancel}
               className="flex items-center gap-1.5 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 border border-slate-200 hover:border-rose-200 px-4 py-2 rounded-xl text-xs font-sans font-semibold transition"
@@ -930,10 +935,11 @@ export default function DocumentDetails({
                       <div className="text-[19px] leading-none">
                         {formattedPrintDate}
                       </div>
-                      <div className="text-right">
-                        <div className="official-barcode ml-auto"></div>
-                        <div className="text-[20px] mt-2 tracking-wide">{printNumber}</div>
-                      </div>
+	                      <div className="text-right">
+	                        <div className="official-barcode ml-auto"></div>
+	                        {printNumber && <div className="text-[20px] mt-2 tracking-wide">{printNumber}</div>}
+	                        {doc.entryNumber && <div className="text-[11px] mt-1 font-sans text-slate-600">შიდა N: {doc.entryNumber}</div>}
+	                      </div>
                     </div>
 
                     <div className="mt-8 ml-auto max-w-[100mm] text-right text-[17px] leading-7">
@@ -948,9 +954,9 @@ export default function DocumentDetails({
                     </div>
                   </div>
 
-                  <div className="mt-14 pt-4">
-                    <div className="flex items-end justify-between">
-                      <div className="max-w-[92mm] text-[16px] leading-6">
+	                  <div className="mt-14 pt-4">
+	                    <div className="grid grid-cols-[1fr_34mm_78mm] items-end gap-8">
+	                      <div className="max-w-[92mm] text-[16px] leading-6">
                         <span className="block">
                           {getUserPositionAndDept(signerId) || "ხელმძღვანელი"}
                         </span>
@@ -959,7 +965,17 @@ export default function DocumentDetails({
                         </span>
                       </div>
 
-                      <div className="relative w-[78mm] h-[28mm] flex items-center justify-center">
+	                      <div className="h-[32mm] flex items-center justify-center">
+	                        {doc.status === DocumentStatus.SIGNED && defaultStamp?.imageUrl && (
+	                          <img
+	                            src={defaultStamp.imageUrl}
+	                            alt="ბეჭედი"
+	                            className="w-[30mm] h-[30mm] object-contain opacity-95"
+	                          />
+	                        )}
+	                      </div>
+
+	                      <div className="relative w-[78mm] h-[28mm] flex items-center justify-center">
                         {doc.status === DocumentStatus.SIGNED && users.find(u => u.id === signerId)?.signatureImage && (
                           <img
                             src={users.find(u => u.id === signerId)?.signatureImage}
@@ -975,15 +991,7 @@ export default function DocumentDetails({
                         )}
                       </div>
                     </div>
-
-                    {doc.status === DocumentStatus.SIGNED && defaultStamp?.imageUrl && (
-                      <img
-                        src={defaultStamp.imageUrl}
-                        alt="ბეჭედი"
-                        className="absolute right-[17mm] bottom-[12mm] w-[25mm] h-[25mm] object-contain opacity-95"
-                      />
-                    )}
-                  </div>
+	                  </div>
                 </div>
 
                 {/* Print button */}

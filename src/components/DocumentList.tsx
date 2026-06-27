@@ -350,7 +350,7 @@ export default function DocumentList({
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-100 text-slate-600 text-xs font-sans font-semibold uppercase tracking-wider">
+              <tr className="bg-gradient-to-b from-slate-100 to-slate-50 border-b border-slate-200 text-slate-700 text-[11px] font-sans font-bold">
                 <th className="p-4 w-12 text-center">
                   <input
                     type="checkbox"
@@ -359,32 +359,37 @@ export default function DocumentList({
                     className="rounded border-slate-300 focus:ring-slate-900"
                   />
                 </th>
-                <th className="p-4 w-16">სტატუსი</th>
-                <th className="p-4 cursor-pointer hover:bg-slate-100 transition" onClick={() => handleSort("category")}>
-                  კატეგორია {sortBy === "category" && (sortOrder === "asc" ? "▲" : "▼")}
+                <th className="p-3 cursor-pointer hover:bg-slate-100 transition" onClick={() => handleSort("category")}>
+                  მდგომარეობა
                 </th>
-                <th className="p-4 cursor-pointer hover:bg-slate-100 transition" onClick={() => handleSort("subject")}>
-                  დოკუმენტის საგანი {sortBy === "subject" && (sortOrder === "asc" ? "▲" : "▼")}
+                <th className="p-3 cursor-pointer hover:bg-slate-100 transition" onClick={() => handleSort("documentType")}>
+                  ტიპი / სტატუსი
                 </th>
-                <th className="p-4 cursor-pointer hover:bg-slate-100 transition" onClick={() => handleSort("documentNumber")}>
-                  ნომერი და თარიღი {sortBy === "documentNumber" && (sortOrder === "asc" ? "▲" : "▼")}
+                <th className="p-3 cursor-pointer hover:bg-slate-100 transition" onClick={() => handleSort("documentNumber")}>
+                  დოკუმენტის N / თარიღი
                 </th>
-                <th className="p-4">პრიორიტეტი</th>
-                <th className="p-4">ავტორი</th>
-                <th className="p-4 text-right">ქმედება</th>
+                <th className="p-3">შიდა N / თარიღი</th>
+                <th className="p-3">ვადა</th>
+                <th className="p-3">ავტორი</th>
+                <th className="p-3">პასუხები</th>
+                <th className="p-3">ადრესატი</th>
+                <th className="p-3 cursor-pointer hover:bg-slate-100 transition" onClick={() => handleSort("subject")}>თემა</th>
+                <th className="p-3">მიღების დრო</th>
+                <th className="p-3 text-center">პრიორიტეტი</th>
+                <th className="p-3 text-right">ქმედება</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-sm">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-12 text-center text-slate-400 font-sans">
+                  <td colSpan={13} className="p-12 text-center text-slate-400 font-sans">
                     <FolderOpen className="w-12 h-12 mx-auto mb-3 text-slate-300" />
                     დოკუმენტები ვერ მოიძებნა
                   </td>
                 </tr>
               ) : (
                 filtered.map(doc => (
-                  <tr key={doc.id} className="hover:bg-slate-50 transition group">
+	                  <tr key={doc.id} className="hover:bg-sky-50 odd:bg-white even:bg-slate-50/70 transition group align-top border-b border-slate-100">
                     {/* Checkbox */}
                     <td className="p-4 text-center">
                       <input
@@ -396,43 +401,43 @@ export default function DocumentList({
                     </td>
 
                     {/* Status badge */}
-                    <td className="p-4">{renderStatusBadge(doc.status)}</td>
+	                    <td className="p-3 text-xs font-semibold text-center">{GEORGIAN_CATEGORIES[doc.category] || doc.category}<br />{renderStatusBadge(doc.status)}</td>
 
                     {/* Category */}
-                    <td className="p-4 font-sans font-medium text-slate-800">
-                      {GEORGIAN_CATEGORIES[doc.category] || doc.category}
-                    </td>
+	                    <td className="p-3 font-sans text-xs font-semibold text-slate-800">
+	                      {GEORGIAN_DOCUMENT_TYPES[doc.documentType] || doc.documentType}
+	                      <span className="block text-slate-400 mt-1">{GEORGIAN_DOCUMENT_STATUSES[doc.status] || doc.status}</span>
+	                    </td>
 
                     {/* Subject/Type */}
-                    <td className="p-4 max-w-xs">
-                      <span className="text-xxs font-sans uppercase font-bold text-slate-400 tracking-wider block">
-                        {GEORGIAN_DOCUMENT_TYPES[doc.documentType] || doc.documentType}
-                      </span>
-                      <span className="font-sans font-medium text-slate-800 block truncate mt-0.5" title={doc.subject}>
-                        {doc.subject}
-                      </span>
-                    </td>
+	                    <td className="p-3 text-center">
+	                      <span className="font-mono text-xs text-slate-700 block">{doc.documentNumber || "-"}</span>
+	                      <span className="text-[11px] text-slate-500 font-sans block mt-0.5">{doc.registrationDate || "-"}</span>
+	                    </td>
 
                     {/* Number and Date */}
-                    <td className="p-4">
-                      <span className="font-mono text-xs text-slate-600 block">
-                        {doc.documentNumber || "—"}
-                      </span>
-                      <span className="text-xxs text-slate-400 font-sans block mt-0.5">
-                        {doc.documentDate || doc.createdAt.split("T")[0]}
-                      </span>
-                    </td>
+	                    <td className="p-3 text-center">
+	                      <span className="font-mono text-xs text-slate-700 block">{doc.entryNumber || "—"}</span>
+	                      <span className="text-[11px] text-slate-500 font-sans block mt-0.5">{doc.documentDate || doc.createdAt.split("T")[0]}</span>
+	                    </td>
 
                     {/* Priority */}
-                    <td className="p-4">{renderPriorityBadge(doc.priority)}</td>
+	                    <td className="p-3 text-center text-xs">{doc.deadline || "-"}</td>
 
                     {/* Author */}
-                    <td className="p-4 font-sans text-slate-600">
-                      {getUserName(doc.authorId)}
-                    </td>
+	                    <td className="p-3 font-sans text-xs text-slate-700 max-w-[180px]">{getUserName(doc.authorId)}</td>
+	                    <td className="p-3 text-center text-xs font-mono">{doc.attachmentCount || 0} / {doc.pageCount || 0}</td>
+	                    <td className="p-3 font-sans text-xs text-slate-700 max-w-[180px] truncate">{doc.recipient || doc.sender || "-"}</td>
+	                    <td className="p-3 max-w-sm">
+	                      <span className="font-sans font-medium text-slate-900 block line-clamp-3" title={doc.subject}>{doc.subject}</span>
+	                    </td>
+	                    <td className="p-3 text-center text-xs font-semibold">{doc.createdAt.split("T")[0]}<br />{doc.createdAt.split("T")[1]?.substring(0, 5)}</td>
+	                    <td className="p-3 text-center">
+	                      <span className={`inline-block w-5 h-5 rounded-full ${doc.priority === "URGENT" || doc.priority === "HIGH" ? "bg-red-500" : doc.priority === "NORMAL" ? "bg-yellow-300" : "bg-emerald-400"}`} title={doc.priority}></span>
+	                    </td>
 
                     {/* Action buttons */}
-                    <td className="p-4 text-right">
+	                    <td className="p-3 text-right">
                       <div className="flex items-center justify-end gap-1.5 opacity-80 group-hover:opacity-100 transition">
                         <button
                           onClick={() => onOpenDocument(doc.id)}

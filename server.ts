@@ -139,7 +139,11 @@ const PORT = Number(process.env.PORT) || 3000;
 function assignDocumentNumber(data: any, doc: Document) {
   if (doc.documentNumber) return doc.documentNumber;
 
-  const rule = data.numbering_rules.find((r: NumberingRule) => r.category === doc.category) || data.numbering_rules[0];
+  const rule =
+    data.numbering_rules.find((r: NumberingRule) => r.documentType === doc.documentType && r.category === doc.category) ||
+    data.numbering_rules.find((r: NumberingRule) => r.documentType === doc.documentType) ||
+    data.numbering_rules.find((r: NumberingRule) => r.category === doc.category) ||
+    data.numbering_rules[0];
   const seq = data.numbering_sequences.find((s: any) => s.ruleId === rule.id);
   let nextNum = 100001;
 
@@ -162,6 +166,15 @@ function assignDocumentNumber(data: any, doc: Document) {
   doc.registrationNumber = doc.registrationNumber || `REG-${year}-${Math.floor(Math.random() * 90000 + 10000)}`;
   doc.registrationDate = doc.registrationDate || new Date().toISOString().split("T")[0];
   return doc.documentNumber;
+}
+
+function assignInternalNumber(data: any, doc: Document) {
+  if (doc.entryNumber) return doc.entryNumber;
+  const year = new Date().getFullYear();
+  const count = data.documents.filter((item: Document) => item.createdAt?.startsWith(String(year))).length + 1;
+  doc.entryNumber = String(count).padStart(6, "0");
+  doc.documentDate = doc.documentDate || new Date().toISOString().split("T")[0];
+  return doc.entryNumber;
 }
 
 // API Auth routes
@@ -390,6 +403,7 @@ app.post("/api/documents", (req, res) => {
     updatedAt: new Date().toISOString(),
     archiveStatus: "ACTIVE"
   };
+  assignInternalNumber(data, newDoc);
 
   data.documents.push(newDoc);
 
@@ -511,9 +525,14 @@ app.post("/api/documents/:id/send", (req, res) => {
 });
 
 app.post("/api/documents/:id/cancel", (req, res) => {
+  const { userId } = req.body || {};
   const data = getDb();
   const idx = data.documents.findIndex((d: Document) => d.id === req.params.id);
   if (idx === -1) return res.status(404).json({ message: "დოკუმენტი ვერ მოიძებნა" });
+  const actor = data.users.find((u: User) => u.id === userId);
+  if (!actor || ![UserRole.ADMIN, UserRole.MANAGER, UserRole.SIGNER].includes(actor.role)) {
+    return res.status(403).json({ message: "დოკუმენტის გაუქმება მხოლოდ ადმინისტრატორს ან დირექტორს შეუძლია" });
+  }
 
   data.documents[idx].status = DocumentStatus.CANCELLED;
   data.documents[idx].cancelledAt = new Date().toISOString();

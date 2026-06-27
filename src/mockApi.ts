@@ -76,6 +76,14 @@ function assignDocumentNumber(db: Db, doc: any) {
   doc.registrationDate = doc.registrationDate || new Date().toISOString().split("T")[0];
 }
 
+function assignInternalNumber(db: Db, doc: any) {
+  if (doc.entryNumber) return;
+  const year = new Date().getFullYear();
+  const sequence = (db.documents || []).filter((item) => item.createdAt?.startsWith(String(year))).length + 1;
+  doc.entryNumber = String(sequence).padStart(6, "0");
+  doc.documentDate = doc.documentDate || new Date().toISOString().split("T")[0];
+}
+
 function getCurrentUserId(request: Request) {
   const auth = request.headers.get("Authorization") || "";
   return auth.replace("Bearer jwt-mock-token-", "") || "usr-admin";
@@ -176,6 +184,7 @@ async function handleApi(request: Request, init?: RequestInit) {
         createdAt: now,
         updatedAt: now,
       };
+      assignInternalNumber(db, created);
       db.documents.unshift(created);
       db.document_recipients.push({
         id: nextId("rec"),
@@ -297,6 +306,12 @@ async function handleApi(request: Request, init?: RequestInit) {
       return json(doc);
     }
     if (method === "POST") {
+      if (parts[2] === "cancel") {
+        const actor = db.users.find((user) => user.id === userId);
+        if (!actor || !["ADMIN", "MANAGER", "SIGNER"].includes(actor.role)) {
+          return json({ message: "დოკუმენტის გაუქმება მხოლოდ ადმინისტრატორს ან დირექტორს შეუძლია" }, { status: 403 });
+        }
+      }
       const statusByAction: Record<string, string> = {
         register: "REGISTERED",
         send: "SENT",
