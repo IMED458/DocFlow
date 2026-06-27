@@ -14,7 +14,7 @@ const firebaseConfig = {
 
 export const firebaseApp: FirebaseApp = initializeApp(firebaseConfig);
 export const firestore: Firestore = initializeFirestore(firebaseApp, {
-  experimentalAutoDetectLongPolling: true,
+  experimentalForceLongPolling: true,
 });
 
 // Analytics მხოლოდ მხარდაჭერილ (https) გარემოში — localhost-ზე ჩუმად გამოტოვდება.

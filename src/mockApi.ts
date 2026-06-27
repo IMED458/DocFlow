@@ -45,6 +45,8 @@ const ALL_COLLECTIONS = [
   "delivery_records", "document_types",
 ];
 
+const FIRESTORE_LOAD_TIMEOUT_MS = 4500;
+
 // მონაცემები ინახება Firestore-ში; ბრაუზერში ვაკეშირებთ მეხსიერებაში სწრაფი წვდომისთვის.
 function shouldUseMockApi() {
   return (
@@ -70,6 +72,33 @@ function normalizeSeed(): Db {
   for (const name of ALL_COLLECTIONS) if (!Array.isArray(seed[name])) seed[name] = [];
   seed.document_types = seed.document_types?.length ? seed.document_types : defaultDocumentTypes;
   return seed;
+}
+
+function snapshotAll(db: Db) {
+  for (const name of ALL_COLLECTIONS) snapshotSynced(name, db[name] || []);
+}
+
+function fallbackDb(reason: unknown): Db {
+  console.warn("Firestore დროულად არ ჩაიტვირთა; დროებით ვიყენებთ საწყის მონაცემებს", reason);
+  const seed = normalizeSeed();
+  snapshotAll(seed);
+  return seed;
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(`Firestore load timeout after ${ms}ms`)), ms);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
 }
 
 function snapshotSynced(name: string, rows: any[]) {
@@ -130,11 +159,10 @@ async function loadFromFirestore(): Promise<Db> {
 async function ensureLoaded(): Promise<Db> {
   if (cache) return cache;
   if (!loadPromise) {
-    loadPromise = loadFromFirestore()
+    loadPromise = withTimeout(loadFromFirestore(), FIRESTORE_LOAD_TIMEOUT_MS)
       .then((db) => { cache = db; return db; })
       .catch((e) => {
-        console.error("Firestore ჩატვირთვა ჩაიშალა; ვიყენებთ საწყის მონაცემებს", e);
-        cache = normalizeSeed();
+        cache = fallbackDb(e);
         return cache;
       });
   }
