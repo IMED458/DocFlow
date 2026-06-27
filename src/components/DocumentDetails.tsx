@@ -79,11 +79,12 @@ function Barcode({ value, height = 44 }: { value: string; height?: number }) {
     x += gap; // სიმბოლოებს შორის ვიწრო ფანჯარა
   }
   const width = Math.max(x, 1);
+  const renderWidthMm = Math.min(38, width * 0.28);
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}
-      width={`${Math.min(62, width * 0.42)}mm`}
-      height={`${(height / width) * Math.min(62, width * 0.42)}mm`}
+      width={`${renderWidthMm}mm`}
+      height={`${Math.max(8, (height / width) * renderWidthMm)}mm`}
       preserveAspectRatio="none"
       className="block ml-auto"
       shapeRendering="crispEdges"
@@ -161,7 +162,6 @@ export default function DocumentDetails({
   // Form Inputs
   const [newComment, setNewComment] = useState("");
   const [selectedVisaUsers, setSelectedVisaUsers] = useState<string[]>([]);
-  const [selectedSigner, setSelectedSigner] = useState("");
   const [resolutionText, setResolutionText] = useState("");
   const [taskAssignee, setTaskAssignee] = useState("");
   const [taskDesc, setTaskDesc] = useState("");
@@ -427,11 +427,12 @@ export default function DocumentDetails({
       await handleSendToVisa();
       return;
     }
-    if (doc.status === DocumentStatus.DRAFT) {
-      await handleRegister();
+    const visaActions = visaHistory.filter((h: any) => h.role === "VISA");
+    const hasFullyApprovedVisa = visaActions.length > 0 && visaActions.every((h: any) => h.status === VisaActionStatus.APPROVED);
+    if (!hasFullyApprovedVisa) {
+      window.alert("ხელმოწერამდე აირჩიეთ ვიზირების მონაწილეები და გაგზავნეთ დოკუმენტი ვიზირებაზე.");
       return;
     }
-    setSelectedSigner(selectedSigner || doc.authorId);
     try {
       const res = await fetch(`/api/documents/${doc.id}/signature/request`, {
         method: "POST",
@@ -439,11 +440,14 @@ export default function DocumentDetails({
           "Content-Type": "application/json",
           "Authorization": `Bearer jwt-mock-token-${currentUser.id}`
         },
-        body: JSON.stringify({ signerId: selectedSigner || doc.authorId, userId: currentUser.id })
+	        body: JSON.stringify({ signerId: doc.authorId, userId: currentUser.id })
       });
       if (res.ok) {
         loadDetails();
         onRefresh();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        window.alert(err.message || "ხელმოსაწერად გაგზავნა ვერ მოხერხდა.");
       }
     } catch (e) {
       console.error(e);
@@ -718,6 +722,10 @@ export default function DocumentDetails({
 
   // Send to Visa Approvers
   const handleSendToVisa = async () => {
+    if (selectedVisaUsers.length === 0) {
+      window.alert("აირჩიეთ მინიმუმ ერთი ვიზირების მონაწილე.");
+      return;
+    }
     try {
       const res = await fetch(`/api/documents/${doc.id}/visa/send`, {
         method: "POST",
@@ -727,11 +735,14 @@ export default function DocumentDetails({
         },
         body: JSON.stringify({ visaUsers: selectedVisaUsers, userId: currentUser.id })
       });
-      if (res.ok) {
-        setSelectedVisaUsers([]);
-        loadDetails();
-        onRefresh();
-      }
+	      if (res.ok) {
+	        setSelectedVisaUsers([]);
+	        loadDetails();
+	        onRefresh();
+	      } else {
+	        const err = await res.json().catch(() => ({}));
+	        window.alert(err.message || "ვიზირებაზე გაგზავნა ვერ მოხერხდა.");
+	      }
     } catch (e) {
       console.error(e);
     }
@@ -768,13 +779,15 @@ export default function DocumentDetails({
           "Content-Type": "application/json",
           "Authorization": `Bearer jwt-mock-token-${currentUser.id}`
         },
-        body: JSON.stringify({ signerId: selectedSigner, userId: currentUser.id })
+        body: JSON.stringify({ signerId: doc.authorId, userId: currentUser.id })
       });
-      if (res.ok) {
-        setSelectedSigner("");
-        loadDetails();
-        onRefresh();
-      }
+	      if (res.ok) {
+	        loadDetails();
+	        onRefresh();
+	      } else {
+	        const err = await res.json().catch(() => ({}));
+	        window.alert(err.message || "ხელმოსაწერად გაგზავნა ვერ მოხერხდა.");
+	      }
     } catch (e) {
       console.error(e);
     }
@@ -791,10 +804,13 @@ export default function DocumentDetails({
         },
         body: JSON.stringify({ userId: currentUser.id, comment: "ხელმოწერილია ელექტრონულად" })
       });
-      if (res.ok) {
-        loadDetails();
-        onRefresh();
-      }
+	      if (res.ok) {
+	        loadDetails();
+	        onRefresh();
+	      } else {
+	        const err = await res.json().catch(() => ({}));
+	        window.alert(err.message || "ხელმოწერა ვერ მოხერხდა.");
+	      }
     } catch (e) {
       console.error(e);
     }
@@ -900,14 +916,6 @@ export default function DocumentDetails({
   const printDate = doc.registrationDate || doc.documentDate || new Date().toISOString().split("T")[0];
   const formattedPrintDate = printDate.split("-").reverse().join("/");
   const printNumber = doc.documentNumber || doc.entryNumber || "";
-  // საბეჭდ ვერსიაში ადრესატის ხაზი — რეალური ადრესატები, პლეისჰოლდერების გარეშე
-  // (მაგ. „შიდა რეზოლუცია“ / „გარე“ არ უნდა დაიბეჭდოს).
-  const RECIPIENT_PLACEHOLDERS = ["შიდა რეზოლუცია", "გარე", "შიდა აპარატი", "სამინისტროს შიდა აპარატი"];
-  const printableRecipients = recipients
-    .filter((r: any) => r.recipientType !== "CHANCELLERY" && r.recipientName && !RECIPIENT_PLACEHOLDERS.includes(String(r.recipientName).trim()))
-    .map((r: any) => r.recipientName);
-  const cleanDocRecipient = doc.recipient && !RECIPIENT_PLACEHOLDERS.includes(doc.recipient.trim()) ? doc.recipient.trim() : "";
-  const printRecipientLine = printableRecipients.length > 0 ? printableRecipients.join(", ") : cleanDocRecipient;
   const documentAuthors = doc.authors && doc.authors.length > 0 ? doc.authors : [{
     id: `author-${doc.authorId}`,
     userId: doc.authorId,
@@ -921,6 +929,8 @@ export default function DocumentDetails({
   const canCancelDocument = true;
   const isAdmin = currentUser.role === UserRole.ADMIN;
   const isSignedDocument = doc.signatureStatus === "SIGNED" || doc.status === DocumentStatus.SIGNED || doc.status === DocumentStatus.COMPLETED;
+  const visaReviewActions = visaHistory.filter((h: any) => h.role === "VISA");
+  const hasFullyApprovedVisa = visaReviewActions.length > 0 && visaReviewActions.every((h: any) => h.status === VisaActionStatus.APPROVED);
 
   return (
     <div className="space-y-6">
@@ -1138,12 +1148,6 @@ export default function DocumentDetails({
 	                        {doc.entryNumber && <div className="text-[11px] mt-1 font-sans text-slate-600">შიდა N: {doc.entryNumber}</div>}
 	                      </div>
                     </div>
-
-                    {printRecipientLine && (
-                      <div className="mt-8 ml-auto max-w-[100mm] text-right text-[17px] leading-7">
-                        {printRecipientLine}
-                      </div>
-                    )}
 
                     <div className="mt-8 space-y-6 text-[18px] leading-8">
                       <div
@@ -1460,28 +1464,25 @@ export default function DocumentDetails({
                 )}
 
                 {/* Send to sign panel */}
-	                {canEditWorkflow && !visaHistory.some(h => h.role === "SIGN" && h.status === VisaActionStatus.PENDING) && (
+	                {canEditWorkflow && hasFullyApprovedVisa && !visaHistory.some(h => h.role === "SIGN" && h.status === VisaActionStatus.PENDING) && (
 	                  <div className="space-y-2.5">
-	                    <label className="text-xxs font-bold text-slate-400 block font-sans">ხელმოსაწერად გაგზავნა:</label>
-	                    <select
-	                      value={selectedSigner}
-	                      onChange={e => setSelectedSigner(e.target.value)}
-                      className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-sans focus:outline-hidden"
-                    >
-                      <option value="">აირჩიეთ ხელმომწერი...</option>
-                      {users.map(u => (
-                        <option key={u.id} value={u.id}>{u.firstName} {u.lastName} ({u.positionName || GEORGIAN_ROLES[u.role]})</option>
-                      ))}
-                    </select>
+		                    <label className="text-xxs font-bold text-slate-400 block font-sans">ავტორთან ხელმოსაწერად გაგზავნა:</label>
+		                    <div className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-sans text-slate-700">
+		                      {getUserName(doc.authorId)} ({getUserPositionAndDept(doc.authorId) || "ავტორი"})
+		                    </div>
                     <button
                       onClick={handleRequestSignature}
-                      disabled={!selectedSigner}
                       className="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-sans font-semibold py-2 rounded-lg transition disabled:opacity-40"
                     >
-                      ხელმოსაწერად გაგზავნა
+                      ავტორთან ხელმოსაწერად გაგზავნა
                     </button>
-                  </div>
-                )}
+	                  </div>
+	                )}
+	                {canEditWorkflow && !hasFullyApprovedVisa && (
+	                  <p className="text-xxs text-slate-400 font-sans italic">
+	                    ხელმოწერა ჩაირთვება მხოლოდ ვიზირების სრულად დასრულების შემდეგ.
+	                  </p>
+	                )}
 
                 {/* Sign list / status */}
                 <div>

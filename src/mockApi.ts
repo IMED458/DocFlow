@@ -343,12 +343,86 @@ function getCurrentUserId(request: Request) {
   return auth.replace("Bearer jwt-mock-token-", "") || "usr-admin";
 }
 
-function filterDocuments(documents: any[], url: URL) {
+function isChancelleryUser(user: any) {
+  return user?.departmentId === "dep-chanc" || String(user?.positionName || "").includes("კანცელარ");
+}
+
+function documentAuthorIds(doc: any) {
+  const ids = new Set([doc.authorId, doc.createdBy, doc.responsibleId].filter(Boolean));
+  (doc.authors || []).forEach((author: any) => author.userId && ids.add(author.userId));
+  return ids;
+}
+
+function visaActionsFor(db: Db, docId: string, role?: string) {
+  return (db.visa_actions || []).filter((item: any) => item.documentId === docId && (!role || item.role === role));
+}
+
+function hasCompletedVisa(db: Db, docId: string) {
+  const visas = visaActionsFor(db, docId, "VISA");
+  return visas.length > 0 && visas.every((item: any) => item.status === "APPROVED");
+}
+
+function ensureChancelleryRecipients(db: Db, doc: any) {
+  db.document_recipients = db.document_recipients || [];
+  db.notifications = db.notifications || [];
+  const now = new Date().toISOString();
+  const chancelleryUsers = (db.users || []).filter(isChancelleryUser);
+  const targetUsers = chancelleryUsers.length ? chancelleryUsers : [{ id: "dep-chanc", firstName: "კანცელარია", lastName: "" }];
+
+  targetUsers.forEach((user: any) => {
+    const exists = db.document_recipients.some((recipient: any) =>
+      recipient.documentId === doc.id &&
+      recipient.recipientType === "CHANCELLERY" &&
+      (recipient.recipientUserId || recipient.userId || "dep-chanc") === (user.id || "dep-chanc")
+    );
+    if (!exists) {
+      db.document_recipients.push({
+        id: nextId("rec"),
+        documentId: doc.id,
+        recipientType: "CHANCELLERY",
+        recipientUserId: user.id,
+        recipientName: user.id === "dep-chanc" ? "კანცელარია" : `${user.firstName} ${user.lastName}`.trim(),
+        recipientPosition: user.positionName || "საქმისწარმოების სამსახური",
+        deliveryMethod: "SYSTEM",
+        status: "PENDING",
+        createdAt: now,
+      });
+      if (user.id && user.id !== "dep-chanc") {
+        db.notifications.push({
+          id: nextId("not"),
+          userId: user.id,
+          title: "ხელმოწერილი დოკუმენტი",
+          message: `კანცელარიაში შემოვიდა დოკუმენტი: ${doc.subject || doc.documentNumber || doc.entryNumber}`,
+          read: false,
+          createdAt: now,
+        });
+      }
+    }
+  });
+}
+
+function canUserSeeDocument(db: Db, doc: any, userId: string) {
+  const user = (db.users || []).find((item: any) => item.id === userId);
+  if (!user) return false;
+  if (user.role === "ADMIN") return true;
+  if (documentAuthorIds(doc).has(userId)) return true;
+  if (visaActionsFor(db, doc.id).some((item: any) => item.userId === userId)) return true;
+  if ((db.document_recipients || []).some((recipient: any) =>
+    recipient.documentId === doc.id && (recipient.recipientUserId === userId || recipient.userId === userId)
+  )) return true;
+  if (isChancelleryUser(user)) {
+    return ["SIGNED", "COMPLETED", "SENT", "RECEIVED", "READ", "RESOLUTION_ASSIGNED", "IN_PROGRESS"].includes(doc.status);
+  }
+  return false;
+}
+
+function filterDocuments(db: Db, documents: any[], url: URL, userId: string) {
   const q = (url.searchParams.get("q") || url.searchParams.get("search") || "").toLowerCase();
   const status = url.searchParams.get("status");
   const category = url.searchParams.get("category");
   const entryNumber = url.searchParams.get("entryNumber")?.toLowerCase();
   return documents.filter((doc) => {
+    if (!canUserSeeDocument(db, doc, userId)) return false;
     if (q && !`${doc.subject || ""} ${doc.description || ""} ${doc.documentNumber || ""} ${doc.registrationNumber || ""} ${doc.entryNumber || ""} ${doc.body || ""}`.toLowerCase().includes(q)) return false;
     if (entryNumber && !`${doc.entryNumber || ""}`.toLowerCase().includes(entryNumber)) return false;
     if (status && status !== "ALL" && doc.status !== status) return false;
@@ -361,7 +435,7 @@ function collectionResponse(db: Db, apiName: string, url: URL) {
   const key = collectionByApiName[apiName];
   if (!key) return null;
   const rows = db[key] || [];
-  return apiName === "documents" ? filterDocuments(rows, url) : rows;
+  return apiName === "documents" ? filterDocuments(db, rows, url, "usr-admin") : rows;
 }
 
 async function handleApi(request: Request, init?: RequestInit) {
@@ -489,7 +563,7 @@ async function handleApi(request: Request, init?: RequestInit) {
     const docId = parts[1];
     const doc = db.documents.find((d) => d.id === docId);
 
-    if (method === "GET" && parts.length === 1) return json(filterDocuments(db.documents || [], url));
+	    if (method === "GET" && parts.length === 1) return json(filterDocuments(db, db.documents || [], url, userId));
     if (method === "POST" && parts.length === 1) {
       const body = await readBody(init);
       const now = new Date().toISOString();
@@ -506,27 +580,17 @@ async function handleApi(request: Request, init?: RequestInit) {
       };
       assignInternalNumber(db, created);
       db.documents.unshift(created);
-      db.document_recipients.push({
-        id: nextId("rec"),
-        documentId: created.id,
-        recipientType: "CHANCELLERY",
-        recipientName: "კანცელარია",
-        recipientPosition: "საქმისწარმოების სამსახური",
-        deliveryMethod: "SYSTEM",
-        status: "PENDING",
-        createdAt: now,
-      });
-      if (body.signerId) {
-        created.status = "SENT_TO_SIGN";
-        created.signatureStatus = "PENDING";
-        db.visa_actions.push({
-          id: nextId("sign-act"),
-          documentId: created.id,
-          userId: body.signerId,
-          role: "SIGN",
-          status: "PENDING",
-        });
-      }
+	      if (body.signerId) {
+	        created.status = "DRAFT";
+	        db.visa_actions.push({
+	          id: nextId("sign-act"),
+	          documentId: created.id,
+	          userId: created.authorId,
+	          role: "SIGN",
+	          status: "WAITING_FOR_VISA",
+	          createdAt: now,
+	        });
+	      }
       await writeDb(db);
       return json(created, { status: 201 });
     }
@@ -661,69 +725,84 @@ async function handleApi(request: Request, init?: RequestInit) {
       }
       return json(db.resolutions.filter((r) => r.documentId === docId));
     }
-    if (method === "POST" && parts[2] === "visa" && parts[3] === "send") {
-      const body = await readBody(init);
-      doc.status = "SENT_TO_VISA";
-      doc.visaStatus = "PENDING";
-      (body.visaUsers || []).forEach((visaUserId: string) => {
-        db.visa_actions.push({
-          id: nextId("visa-act"),
-          documentId: docId,
-          userId: visaUserId,
-          role: "VISA",
-          status: "PENDING",
-        });
-      });
-      await writeDb(db);
-      return json(doc);
-    }
-    if (method === "POST" && parts[2] === "visa" && ["approve", "return", "reject"].includes(parts[3])) {
-      const action = db.visa_actions.find((item) => item.documentId === docId && item.userId === userId && item.role === "VISA" && item.status === "PENDING");
-      if (action) {
-        action.status = parts[3] === "approve" ? "APPROVED" : parts[3] === "return" ? "RETURNED" : "REJECTED";
-        action.actionDate = new Date().toISOString();
-      }
-      const allVisaApproved = db.visa_actions
-        .filter((item) => item.documentId === docId && item.role === "VISA")
-        .every((item) => item.status === "APPROVED");
-      doc.status = parts[3] === "approve" && allVisaApproved ? "SENT_TO_SIGN" : parts[3] === "approve" ? "SENT_TO_VISA" : parts[3] === "return" ? "VISA_RETURNED" : "REJECTED";
-      doc.visaStatus = parts[3] === "approve" ? "APPROVED" : parts[3] === "return" ? "RETURNED" : "REJECTED";
-      if (parts[3] === "approve" && allVisaApproved) {
-        doc.signatureStatus = "PENDING";
-        const hasAuthorSign = db.visa_actions.some((item) => item.documentId === docId && item.userId === doc.authorId && item.role === "SIGN" && item.status === "PENDING");
-        if (!hasAuthorSign) {
-          db.visa_actions.push({
-            id: nextId("sign-act"),
-            documentId: docId,
-            userId: doc.authorId,
-            role: "SIGN",
-            status: "PENDING",
-          });
-        }
-      }
-      await writeDb(db);
-      return json(doc);
-    }
-    if (method === "POST" && parts[2] === "signature" && parts[3] === "request") {
-      const body = await readBody(init);
-      const targetSignerId = body.signerId || doc.authorId;
-      doc.status = "SENT_TO_SIGN";
-      doc.signatureStatus = "PENDING";
-      const hasPending = db.visa_actions.some((item) => item.documentId === docId && item.userId === targetSignerId && item.role === "SIGN" && item.status === "PENDING");
-      if (hasPending) {
-        await writeDb(db);
+	    if (method === "POST" && parts[2] === "visa" && parts[3] === "send") {
+	      const body = await readBody(init);
+	      const visaUsers = Array.from(new Set((body.visaUsers || []).filter(Boolean)));
+	      if (visaUsers.length === 0) {
+	        return json({ message: "ხელმოწერამდე აუცილებელია მინიმუმ ერთი ვიზირების მონაწილე." }, { status: 400 });
+	      }
+	      doc.status = "SENT_TO_VISA";
+	      doc.visaStatus = "PENDING";
+	      doc.signatureStatus = undefined;
+	      db.visa_actions = (db.visa_actions || []).filter((item: any) =>
+	        !(item.documentId === docId && item.role === "VISA" && item.status === "PENDING")
+	      );
+	      visaUsers.forEach((visaUserId: string) => {
+	        db.visa_actions.push({
+	          id: nextId("visa-act"),
+	          documentId: docId,
+	          userId: visaUserId,
+	          role: "VISA",
+	          status: "PENDING",
+	          createdAt: new Date().toISOString(),
+	        });
+	      });
+	      await writeDb(db);
+	      return json(doc);
+	    }
+	    if (method === "POST" && parts[2] === "visa" && ["approve", "return", "reject"].includes(parts[3])) {
+	      const action = db.visa_actions.find((item) => item.documentId === docId && item.userId === userId && item.role === "VISA" && item.status === "PENDING");
+	      if (!action) return json({ message: "თქვენთვის აქტიური ვიზირება არ მოიძებნა" }, { status: 403 });
+	      if (action) {
+	        action.status = parts[3] === "approve" ? "APPROVED" : parts[3] === "return" ? "RETURNED" : "REJECTED";
+	        action.actionDate = new Date().toISOString();
+	        action.comment = (await readBody(init)).comment;
+	      }
+	      const allVisaApproved = db.visa_actions
+	        .filter((item) => item.documentId === docId && item.role === "VISA")
+	        .every((item) => item.status === "APPROVED");
+	      doc.status = parts[3] === "approve" && allVisaApproved ? "SENT_TO_SIGN" : parts[3] === "approve" ? "SENT_TO_VISA" : parts[3] === "return" ? "VISA_RETURNED" : "REJECTED";
+	      doc.visaStatus = parts[3] === "approve" ? "APPROVED" : parts[3] === "return" ? "RETURNED" : "REJECTED";
+	      if (parts[3] === "approve" && allVisaApproved) {
+	        doc.signatureStatus = "PENDING";
+	        const hasAuthorSign = db.visa_actions.some((item) => doc && item.documentId === docId && item.userId === doc.authorId && item.role === "SIGN" && item.status === "PENDING");
+	        if (!hasAuthorSign) {
+	          db.visa_actions.push({
+	            id: nextId("sign-act"),
+	            documentId: docId,
+	            userId: doc.authorId,
+	            role: "SIGN",
+	            status: "PENDING",
+	            createdAt: new Date().toISOString(),
+	          });
+	        }
+	      }
+	      await writeDb(db);
+	      return json(doc);
+	    }
+	    if (method === "POST" && parts[2] === "signature" && parts[3] === "request") {
+	      if (!hasCompletedVisa(db, docId)) {
+	        return json({ message: "ხელმოწერამდე დოკუმენტმა სრულად უნდა გაიაროს ვიზირება." }, { status: 409 });
+	      }
+	      const targetSignerId = doc.authorId;
+	      doc.status = "SENT_TO_SIGN";
+	      doc.signatureStatus = "PENDING";
+	      const hasPending = db.visa_actions.some((item) => item.documentId === docId && item.userId === targetSignerId && item.role === "SIGN" && item.status === "PENDING");
+	      if (hasPending) {
+	        await writeDb(db);
         return json(doc);
       }
       db.visa_actions.push({
         id: nextId("sign-act"),
         documentId: docId,
-        userId: targetSignerId,
-        role: "SIGN",
-        status: "PENDING",
-      });
-      await writeDb(db);
-      return json(doc);
-    }
+	        userId: targetSignerId,
+	        role: "SIGN",
+	        status: "PENDING",
+	        createdAt: new Date().toISOString(),
+	      });
+	      await writeDb(db);
+	      return json(doc);
+	    }
     if (method === "POST") {
       if (parts[2] === "cancel") {
         const actor = db.users.find((user) => user.id === userId);
@@ -743,11 +822,20 @@ async function handleApi(request: Request, init?: RequestInit) {
         sign: "COMPLETED",
       };
       if (parts[2] === "send" || parts[2] === "register") assignDocumentNumber(db, doc);
-      if (parts[2] === "sign") {
-        doc.signedById = userId;
-        doc.signedAt = new Date().toISOString();
-        doc.signatureStatus = "SIGNED";
-      }
+	      if (parts[2] === "sign") {
+	        const action = db.visa_actions.find((item) => item.documentId === docId && item.userId === userId && item.role === "SIGN" && item.status === "PENDING");
+	        if (!action) return json({ message: "დოკუმენტი თქვენთან ხელმოსაწერად არ არის" }, { status: 403 });
+	        if (!hasCompletedVisa(db, docId)) {
+	          return json({ message: "ხელმოწერამდე დოკუმენტმა სრულად უნდა გაიაროს ვიზირება." }, { status: 409 });
+	        }
+	        assignDocumentNumber(db, doc);
+	        action.status = "APPROVED";
+	        action.actionDate = new Date().toISOString();
+	        doc.signedById = userId;
+	        doc.signedAt = new Date().toISOString();
+	        doc.signatureStatus = "SIGNED";
+	        ensureChancelleryRecipients(db, doc);
+	      }
       doc.status = statusByAction[parts[2]] || doc.status;
       doc.updatedAt = new Date().toISOString();
       await writeDb(db);

@@ -40,6 +40,8 @@ import DocumentList from "./components/DocumentList.js";
 import DocumentDetails from "./components/DocumentDetails.js";
 import AdminPanel from "./components/AdminPanel.js";
 
+const SESSION_USER_KEY = "docflow-georgia-current-user";
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -112,9 +114,24 @@ export default function App() {
     }
   }, [currentUser]);
 
+  useEffect(() => {
+    const saved = localStorage.getItem(SESSION_USER_KEY);
+    if (!saved) return;
+    try {
+      const user = JSON.parse(saved) as User;
+      if (user?.id) {
+        setCurrentUser(user);
+        loadInitialData(user);
+      }
+    } catch {
+      localStorage.removeItem(SESSION_USER_KEY);
+    }
+  }, []);
+
   // Persona Selection Quick Login
   const handlePersonaLogin = (selectedUser: User) => {
     setCurrentUser(selectedUser);
+    localStorage.setItem(SESSION_USER_KEY, JSON.stringify(selectedUser));
     loadInitialData(selectedUser);
   };
 
@@ -138,6 +155,7 @@ export default function App() {
       }
       const data = await res.json();
       setCurrentUser(data.user);
+      localStorage.setItem(SESSION_USER_KEY, JSON.stringify(data.user));
       loadInitialData(data.user);
     } catch (err) {
       setLoginError("ავტორიზაცია ვერ მოხერხდა. სცადეთ თავიდან.");
@@ -153,6 +171,7 @@ export default function App() {
   }, []);
 
   const handleLogout = () => {
+    localStorage.removeItem(SESSION_USER_KEY);
     setCurrentUser(null);
     setDocuments([]);
     setActiveTab("dashboard");
