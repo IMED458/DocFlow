@@ -1,8 +1,7 @@
 // Firebase ინიციალიზაცია — ყველა მონაცემი ინახება Cloud Firestore-ში.
 import { initializeApp, type FirebaseApp } from "firebase/app";
-import { initializeFirestore, type Firestore } from "firebase/firestore";
 
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: "AIzaSyAHPteUiMrry3PqyaqomcLgCM_kcLTBPM8",
   authDomain: "docflow-36240.firebaseapp.com",
   projectId: "docflow-36240",
@@ -13,9 +12,6 @@ const firebaseConfig = {
 };
 
 export const firebaseApp: FirebaseApp = initializeApp(firebaseConfig);
-export const firestore: Firestore = initializeFirestore(firebaseApp, {
-  experimentalForceLongPolling: true,
-});
 
 // Analytics მხოლოდ მხარდაჭერილ (https) გარემოში — localhost-ზე ჩუმად გამოტოვდება.
 export async function initAnalytics(): Promise<void> {

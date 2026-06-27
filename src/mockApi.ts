@@ -1,6 +1,5 @@
 import seedDb from "../db.json";
-import { firestore } from "./firebase";
-import { collection, getDocs, doc, writeBatch } from "firebase/firestore";
+import { firebaseConfig } from "./firebase";
 
 type Db = Record<string, any[]>;
 
@@ -46,6 +45,10 @@ const ALL_COLLECTIONS = [
 ];
 
 const FIRESTORE_LOAD_TIMEOUT_MS = 4500;
+const FIRESTORE_BATCH_SIZE = 400;
+const FIRESTORE_DOCUMENTS_BASE =
+  `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents`;
+const FIRESTORE_API_KEY_PARAM = `key=${encodeURIComponent(firebaseConfig.apiKey)}`;
 
 // მონაცემები ინახება Firestore-ში; ბრაუზერში ვაკეშირებთ მეხსიერებაში სწრაფი წვდომისთვის.
 function shouldUseMockApi() {
@@ -101,6 +104,63 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
+function firestoreDocumentName(collectionName: string, id: string) {
+  return `projects/${firebaseConfig.projectId}/databases/(default)/documents/${encodeURIComponent(collectionName)}/${encodeURIComponent(id)}`;
+}
+
+function firestoreCollectionUrl(collectionName: string, pageToken?: string) {
+  const params = new URLSearchParams({ key: firebaseConfig.apiKey, pageSize: "1000" });
+  if (pageToken) params.set("pageToken", pageToken);
+  return `${FIRESTORE_DOCUMENTS_BASE}/${encodeURIComponent(collectionName)}?${params.toString()}`;
+}
+
+function firestoreCommitUrl() {
+  return `${FIRESTORE_DOCUMENTS_BASE}:commit?${FIRESTORE_API_KEY_PARAM}`;
+}
+
+function toFirestoreValue(value: any): any {
+  if (value === null || value === undefined) return { nullValue: null };
+  if (Array.isArray(value)) return { arrayValue: { values: value.map(toFirestoreValue) } };
+  if (typeof value === "boolean") return { booleanValue: value };
+  if (typeof value === "number") {
+    return Number.isInteger(value) ? { integerValue: String(value) } : { doubleValue: value };
+  }
+  if (typeof value === "object") return { mapValue: { fields: toFirestoreFields(value) } };
+  return { stringValue: String(value) };
+}
+
+function toFirestoreFields(row: any) {
+  return Object.fromEntries(
+    Object.entries(JSON.parse(JSON.stringify(row))).map(([key, value]) => [key, toFirestoreValue(value)])
+  );
+}
+
+function fromFirestoreValue(value: any): any {
+  if (!value || "nullValue" in value) return null;
+  if ("stringValue" in value) return value.stringValue;
+  if ("booleanValue" in value) return value.booleanValue;
+  if ("integerValue" in value) return Number(value.integerValue);
+  if ("doubleValue" in value) return Number(value.doubleValue);
+  if ("timestampValue" in value) return value.timestampValue;
+  if ("arrayValue" in value) return (value.arrayValue.values || []).map(fromFirestoreValue);
+  if ("mapValue" in value) return fromFirestoreFields(value.mapValue.fields || {});
+  return null;
+}
+
+function fromFirestoreFields(fields: Record<string, any> = {}) {
+  return Object.fromEntries(Object.entries(fields).map(([key, value]) => [key, fromFirestoreValue(value)]));
+}
+
+async function firestoreRequest(url: string, init?: RequestInit) {
+  const response = await fetch(url, init);
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`Firestore REST ${response.status}: ${text || response.statusText}`);
+  }
+  if (response.status === 204) return {};
+  return response.json();
+}
+
 function snapshotSynced(name: string, rows: any[]) {
   const map = new Map<string, string>();
   for (const row of rows) {
@@ -111,14 +171,22 @@ function snapshotSynced(name: string, rows: any[]) {
 }
 
 async function writeRowsToFirestore(name: string, rows: any[]) {
-  for (let i = 0; i < rows.length; i += 400) {
-    const batch = writeBatch(firestore);
-    for (const row of rows.slice(i, i + 400)) {
-      if (row?.id == null) continue;
-      // Firestore არ იღებს undefined-ს — ვასუფთავებთ JSON-ით.
-      batch.set(doc(firestore, name, String(row.id)), JSON.parse(JSON.stringify(row)));
+  for (let i = 0; i < rows.length; i += FIRESTORE_BATCH_SIZE) {
+    const writes = rows.slice(i, i + FIRESTORE_BATCH_SIZE)
+      .filter((row) => row?.id != null)
+      .map((row) => ({
+        update: {
+          name: firestoreDocumentName(name, String(row.id)),
+          fields: toFirestoreFields(row),
+        },
+      }));
+    if (writes.length) {
+      await firestoreRequest(firestoreCommitUrl(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ writes }),
+      });
     }
-    await batch.commit();
   }
 }
 
@@ -133,8 +201,14 @@ async function loadFromFirestore(): Promise<Db> {
   const result = emptyDb();
   await Promise.all(
     ALL_COLLECTIONS.map(async (name) => {
-      const snap = await getDocs(collection(firestore, name));
-      result[name] = snap.docs.map((d) => d.data());
+      const rows: any[] = [];
+      let pageToken: string | undefined;
+      do {
+        const data = await firestoreRequest(firestoreCollectionUrl(name, pageToken));
+        rows.push(...(data.documents || []).map((doc: any) => fromFirestoreFields(doc.fields || {})));
+        pageToken = data.nextPageToken;
+      } while (pageToken);
+      result[name] = rows;
       snapshotSynced(name, result[name]);
     })
   );
@@ -199,14 +273,22 @@ async function persistChanges(db: Db) {
     }
     if (ops.length === 0) { synced[name] = next; continue; }
 
-    for (let i = 0; i < ops.length; i += 400) {
-      const batch = writeBatch(firestore);
-      for (const op of ops.slice(i, i + 400)) {
-        const ref = doc(firestore, name, op.id);
-        if (op.type === "set") batch.set(ref, op.data);
-        else batch.delete(ref);
-      }
-      await batch.commit();
+    for (let i = 0; i < ops.length; i += FIRESTORE_BATCH_SIZE) {
+      const writes = ops.slice(i, i + FIRESTORE_BATCH_SIZE).map((op) => (
+        op.type === "set"
+          ? {
+              update: {
+                name: firestoreDocumentName(name, op.id),
+                fields: toFirestoreFields(op.data),
+              },
+            }
+          : { delete: firestoreDocumentName(name, op.id) }
+      ));
+      await firestoreRequest(firestoreCommitUrl(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ writes }),
+      });
     }
     synced[name] = next;
   }
