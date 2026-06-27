@@ -214,11 +214,17 @@ export default function DocumentList({
     return documentTypes.find(typeItem => typeItem.id === id)?.label || GEORGIAN_DOCUMENT_TYPES[id as DocumentType] || id;
   };
 
-  const runWorkflowAction = async (doc: Document, action: "visa" | "sign") => {
+  const runWorkflowAction = async (doc: Document, action: "visa" | "sign" | "chancellery") => {
     const actionKey = `${doc.id}-${action}`;
     setWorkingAction(actionKey);
     try {
-      const endpoint = action === "visa" ? `/api/documents/${doc.id}/visa/approve` : `/api/documents/${doc.id}/sign`;
+      const endpoint =
+        action === "visa"
+          ? `/api/documents/${doc.id}/visa/approve`
+          : action === "sign"
+            ? `/api/documents/${doc.id}/sign`
+            : `/api/documents/${doc.id}/chancellery/forward`;
+      const recipientName = action === "chancellery" ? window.prompt("ადრესატი ან გადაგზავნის შენიშვნა") : "";
       const res = await fetch(endpoint, {
         method: "POST",
         headers: {
@@ -227,7 +233,8 @@ export default function DocumentList({
         },
         body: JSON.stringify({
           userId: currentUserId,
-          comment: action === "visa" ? "დავიზებულია სიიდან" : "ხელმოწერილია სიიდან",
+          comment: action === "visa" ? "დავიზებულია სიიდან" : action === "sign" ? "ხელმოწერილია სიიდან" : "კანცელარიამ გადააგზავნა",
+          recipientName,
         }),
       });
       if (!res.ok) {
@@ -251,6 +258,9 @@ export default function DocumentList({
     }
     if (quickAction === "SIGN") {
       return { type: "sign" as const, label: "ხელმოწერა", title: "დოკუმენტის ხელმოწერა" };
+    }
+    if (quickAction === "CHANCELLERY_FORWARD") {
+      return { type: "chancellery" as const, label: "გადაგზავნა ადრესატთან", title: "კანცელარიიდან გადაგზავნა" };
     }
     return null;
   };

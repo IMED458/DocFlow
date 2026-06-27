@@ -355,6 +355,59 @@ export default function DocumentDetails({
     }
   };
 
+  const handleReturnDocument = async () => {
+    const comment = window.prompt("მიუთითეთ დაბრუნების მიზეზი");
+    if (!comment?.trim()) return;
+    try {
+      const res = await fetch(`/api/documents/${doc.id}/return`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer jwt-mock-token-${currentUser.id}`
+        },
+        body: JSON.stringify({ userId: currentUser.id, comment: comment.trim() })
+      });
+      if (res.ok) {
+        loadDetails();
+        onRefresh();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        window.alert(err.message || "დაბრუნება ვერ მოხერხდა.");
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handlePrintPdf = () => {
+    setViewMode("print");
+    window.setTimeout(() => window.print(), 150);
+  };
+
+  const handleChancelleryForward = async () => {
+    const recipientName = window.prompt("მიუთითეთ ადრესატი ან გადაგზავნის შენიშვნა");
+    if (!recipientName?.trim()) return;
+    try {
+      const res = await fetch(`/api/documents/${doc.id}/chancellery/forward`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer jwt-mock-token-${currentUser.id}`
+        },
+        body: JSON.stringify({ userId: currentUser.id, recipientName: recipientName.trim() })
+      });
+      if (res.ok) {
+        loadDetails();
+        onRefresh();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        window.alert(err.message || "გადაგზავნა ვერ მოხერხდა.");
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   // ადმინისტრატორის სრული წაშლა
   const handleDeleteDocument = async () => {
     if (!window.confirm("ნამდვილად გსურთ დოკუმენტის სრულად წაშლა? ეს ქმედება შეუქცევადია.")) return;
@@ -959,6 +1012,8 @@ export default function DocumentDetails({
   const visaReviewActions = visaHistory.filter((h: any) => h.role === "VISA");
   const hasFullyApprovedVisa = visaReviewActions.length > 0 && visaReviewActions.every((h: any) => h.status === VisaActionStatus.APPROVED);
   const canProceedToSignature = visaReviewActions.length === 0 || hasFullyApprovedVisa;
+  const isCurrentUserChancellery = currentUser.departmentId === "dep-chanc" || `${currentUser.positionName || ""}`.includes("კანცელარ");
+  const hasPendingChancellery = recipients.some((recipient: any) => recipient.recipientType === "CHANCELLERY" && recipient.status === "PENDING");
 
   return (
     <div className="space-y-6">
@@ -1013,13 +1068,23 @@ export default function DocumentDetails({
             </button>
           )}
 
-          <button
-            onClick={() => setViewMode("print")}
+	          <button
+	            onClick={handlePrintPdf}
             className="flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-4 py-2 rounded-xl text-xs font-sans font-semibold transition"
           >
             <Printer className="w-4 h-4" />
-            ბეჭდვა
-          </button>
+	            ბეჭდვა
+	          </button>
+
+	          {isCurrentUserChancellery && hasPendingChancellery && (
+	            <button
+	              onClick={handleChancelleryForward}
+	              className="flex items-center gap-1.5 bg-cyan-600 hover:bg-cyan-500 text-white px-4 py-2 rounded-xl text-xs font-sans font-semibold transition shadow-xs"
+	            >
+	              <Send className="w-4 h-4" />
+	              გადაგზავნა ადრესატთან
+	            </button>
+	          )}
 
           {/* Admin: full delete */}
           {isAdmin && (
@@ -1228,7 +1293,7 @@ export default function DocumentDetails({
                 {/* Print button */}
                 <div className="flex items-center gap-2 mt-4 self-center">
                   <button
-                    onClick={() => window.print()}
+	                    onClick={handlePrintPdf}
                     className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-xl text-xs font-sans font-semibold transition shadow"
                   >
                     <Printer className="w-4 h-4" />
@@ -1482,14 +1547,20 @@ export default function DocumentDetails({
                 {canUserSign() && (
                   <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl space-y-2">
                     <span className="text-xxs font-bold text-amber-800 uppercase block font-sans">დასადასტურებელია:</span>
-                    <button
-                      onClick={handleSign}
-                      className="w-full bg-slate-900 hover:bg-slate-800 text-white py-1.5 rounded-lg text-xs font-sans font-bold transition flex items-center justify-center gap-1.5"
-                    >
-                      <Check className="w-4 h-4" /> ხელის მოწერა
-                    </button>
-                  </div>
-                )}
+	                    <button
+	                      onClick={handleSign}
+	                      className="w-full bg-slate-900 hover:bg-slate-800 text-white py-1.5 rounded-lg text-xs font-sans font-bold transition flex items-center justify-center gap-1.5"
+	                    >
+	                      <Check className="w-4 h-4" /> ხელის მოწერა
+	                    </button>
+	                    <button
+	                      onClick={handleReturnDocument}
+	                      className="w-full bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 py-1.5 rounded-lg text-xs font-sans font-bold transition"
+	                    >
+	                      დაბრუნება
+	                    </button>
+	                  </div>
+	                )}
 
                 {/* Send to sign panel */}
 	                {canEditWorkflow && canProceedToSignature && !visaHistory.some(h => h.role === "SIGN" && h.status === VisaActionStatus.PENDING) && (
@@ -1556,15 +1627,21 @@ export default function DocumentDetails({
                       onChange={e => setNewComment(e.target.value)}
                       className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs font-sans focus:outline-hidden"
                     />
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <button
-                        onClick={() => handleVisaAction("approve")}
+	                    <div className="grid grid-cols-3 gap-1.5">
+	                      <button
+	                        onClick={() => handleVisaAction("approve")}
                         className="bg-emerald-600 hover:bg-emerald-500 text-white py-1.5 rounded-lg text-xxs font-sans font-bold transition"
-                      >
-                        დასტური
-                      </button>
-                      <button
-                        onClick={() => handleVisaAction("reject")}
+	                      >
+	                        დავიზება
+	                      </button>
+	                      <button
+	                        onClick={() => handleVisaAction("return")}
+	                        className="bg-white hover:bg-amber-50 text-amber-700 border border-amber-200 py-1.5 rounded-lg text-xxs font-sans font-bold transition"
+	                      >
+	                        დაბრუნება
+	                      </button>
+	                      <button
+	                        onClick={() => handleVisaAction("reject")}
                         className="bg-rose-600 hover:bg-rose-500 text-white py-1.5 rounded-lg text-xxs font-sans font-bold transition"
                       >
                         უარყოფა

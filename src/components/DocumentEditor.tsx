@@ -21,7 +21,9 @@ import {
   LayoutTemplate,
   FileCheck,
   CheckCircle,
-  HelpCircle
+  HelpCircle,
+  IndentIncrease,
+  IndentDecrease
 } from "lucide-react";
 import { Document, DocumentType, DocumentCategory } from "../types.js";
 
@@ -46,6 +48,7 @@ export default function DocumentEditor({
   const editorRef = useRef<HTMLDivElement>(null);
   const lastSavedBodyRef = useRef(document?.body || "");
   const pendingBodyRef = useRef(document?.body || "");
+  const savedRangeRef = useRef<Range | null>(null);
 
   useEffect(() => {
     if (document) {
@@ -77,14 +80,37 @@ export default function DocumentEditor({
     return () => clearTimeout(delayDebounce);
   }, [body, isReadOnly]);
 
+  const syncBodyFromEditor = () => {
+    if (!editorRef.current) return;
+    pendingBodyRef.current = editorRef.current.innerHTML;
+    setBody(editorRef.current.innerHTML);
+  };
+
+  const saveSelection = () => {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    if (editorRef.current?.contains(range.commonAncestorContainer)) {
+      savedRangeRef.current = range.cloneRange();
+    }
+  };
+
+  const restoreSelection = () => {
+    editorRef.current?.focus();
+    const selection = window.getSelection();
+    if (selection && savedRangeRef.current) {
+      selection.removeAllRanges();
+      selection.addRange(savedRangeRef.current);
+    }
+  };
+
   // Exec HTML editor commands
   const execCommand = (command: string, value: string = "") => {
     if (isReadOnly) return;
+    restoreSelection();
     window.document.execCommand(command, false, value);
-    if (editorRef.current) {
-      pendingBodyRef.current = editorRef.current.innerHTML;
-      setBody(editorRef.current.innerHTML);
-    }
+    syncBodyFromEditor();
+    saveSelection();
   };
 
   // Standard official Georgian templates
@@ -153,7 +179,13 @@ export default function DocumentEditor({
   return (
     <div className="bg-white rounded-2xl border border-slate-100 shadow-xs flex flex-col min-h-[75vh] overflow-hidden">
       {/* Editor Toolbar */}
-      <div className="bg-slate-50 border-b border-slate-100 p-3 flex flex-wrap items-center justify-between gap-2 z-10">
+      <div
+        className="bg-slate-50 border-b border-slate-100 p-3 flex flex-wrap items-center justify-between gap-2 z-10"
+        onMouseDown={(event) => {
+          if ((event.target as HTMLElement).closest("button")) event.preventDefault();
+          saveSelection();
+        }}
+      >
         <div className="flex items-center flex-wrap gap-1">
           {/* Style Controls */}
 	          <button
@@ -226,7 +258,33 @@ export default function DocumentEditor({
 
 	          <span className="w-px h-5 bg-slate-200 mx-1"></span>
 
-	          <button type="button" disabled={isReadOnly} onClick={() => execCommand("formatBlock", "h1")} className="p-1.5 hover:bg-slate-200 text-slate-700 rounded-lg transition disabled:opacity-40" title="სათაური 1">
+		          <select
+		            disabled={isReadOnly}
+		            onChange={e => execCommand("formatBlock", e.target.value)}
+		            defaultValue="p"
+		            className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-700 disabled:opacity-40"
+		            title="სტილი"
+		          >
+		            <option value="p">პარაგრაფი</option>
+		            <option value="h1">სათაური 1</option>
+		            <option value="h2">სათაური 2</option>
+		            <option value="h3">სათაური 3</option>
+		            <option value="blockquote">ციტატა</option>
+		          </select>
+		          <select
+		            disabled={isReadOnly}
+		            onChange={e => execCommand("fontSize", e.target.value)}
+		            defaultValue="3"
+		            className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-700 disabled:opacity-40"
+		            title="ფონტის ზომა"
+		          >
+		            <option value="2">პატარა</option>
+		            <option value="3">ნორმალური</option>
+		            <option value="4">საშუალო</option>
+		            <option value="5">დიდი</option>
+		            <option value="6">ძალიან დიდი</option>
+		          </select>
+		          <button type="button" disabled={isReadOnly} onClick={() => execCommand("formatBlock", "h1")} className="p-1.5 hover:bg-slate-200 text-slate-700 rounded-lg transition disabled:opacity-40" title="სათაური 1">
 	            <Heading1 className="w-4 h-4" />
 	          </button>
 	          <button type="button" disabled={isReadOnly} onClick={() => execCommand("formatBlock", "h2")} className="p-1.5 hover:bg-slate-200 text-slate-700 rounded-lg transition disabled:opacity-40" title="სათაური 2">
@@ -260,12 +318,24 @@ export default function DocumentEditor({
 	          <button type="button" disabled={isReadOnly} onClick={insertTable} className="p-1.5 hover:bg-slate-200 text-slate-700 rounded-lg transition disabled:opacity-40" title="ცხრილის ჩასმა">
 	            <Table className="w-4 h-4" />
 	          </button>
-	          <button type="button" disabled={isReadOnly} onClick={() => execCommand("insertHorizontalRule")} className="p-1.5 hover:bg-slate-200 text-slate-700 rounded-lg transition disabled:opacity-40" title="გამყოფი ხაზი">
-	            <Minus className="w-4 h-4" />
-	          </button>
-	          <button type="button" disabled={isReadOnly} onClick={insertLink} className="p-1.5 hover:bg-slate-200 text-slate-700 rounded-lg transition disabled:opacity-40" title="ბმული">
-	            <LinkIcon className="w-4 h-4" />
-	          </button>
+		          <button type="button" disabled={isReadOnly} onClick={() => execCommand("insertHorizontalRule")} className="p-1.5 hover:bg-slate-200 text-slate-700 rounded-lg transition disabled:opacity-40" title="გამყოფი ხაზი">
+		            <Minus className="w-4 h-4" />
+		          </button>
+		          <button type="button" disabled={isReadOnly} onClick={() => execCommand("outdent")} className="p-1.5 hover:bg-slate-200 text-slate-700 rounded-lg transition disabled:opacity-40" title="შეწევა უკან">
+		            <IndentDecrease className="w-4 h-4" />
+		          </button>
+		          <button type="button" disabled={isReadOnly} onClick={() => execCommand("indent")} className="p-1.5 hover:bg-slate-200 text-slate-700 rounded-lg transition disabled:opacity-40" title="შეწევა">
+		            <IndentIncrease className="w-4 h-4" />
+		          </button>
+		          <button type="button" disabled={isReadOnly} onClick={insertLink} className="p-1.5 hover:bg-slate-200 text-slate-700 rounded-lg transition disabled:opacity-40" title="ბმული">
+		            <LinkIcon className="w-4 h-4" />
+		          </button>
+		          <button type="button" disabled={isReadOnly} onClick={() => execCommand("undo")} className="p-1.5 hover:bg-slate-200 text-slate-700 rounded-lg transition disabled:opacity-40" title="Undo">
+		            <RotateCcw className="w-4 h-4" />
+		          </button>
+		          <button type="button" disabled={isReadOnly} onClick={() => execCommand("redo")} className="p-1.5 hover:bg-slate-200 text-slate-700 rounded-lg transition disabled:opacity-40" title="Redo">
+		            <RotateCw className="w-4 h-4" />
+		          </button>
 
           <span className="w-px h-5 bg-slate-200 mx-1"></span>
 
@@ -369,10 +439,13 @@ export default function DocumentEditor({
                 ref={editorRef}
                 contentEditable
                 suppressContentEditableWarning
-                onInput={e => {
-                  pendingBodyRef.current = e.currentTarget.innerHTML;
-                  setBody(e.currentTarget.innerHTML);
-                }}
+	                onInput={e => {
+	                  pendingBodyRef.current = e.currentTarget.innerHTML;
+	                  setBody(e.currentTarget.innerHTML);
+	                }}
+	                onMouseUp={saveSelection}
+	                onKeyUp={saveSelection}
+	                onFocus={saveSelection}
                 className="min-h-[64vh] focus:outline-hidden font-sans text-slate-800 leading-relaxed text-sm outline-hidden whitespace-pre-wrap break-words"
                 placeholder="დაწერეთ დოკუმენტის შინაარსი ქართულად აქ..."
               ></div>

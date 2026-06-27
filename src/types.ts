@@ -19,6 +19,14 @@ export enum DocumentType {
 
 export enum DocumentStatus {
   DRAFT = "DRAFT",
+  INTERNAL_CREATED = "INTERNAL_CREATED",
+  WAITING_FOR_AUTHOR_SIGNATURE = "WAITING_FOR_AUTHOR_SIGNATURE",
+  WAITING_FOR_CHANCELLERY = "WAITING_FOR_CHANCELLERY",
+  WAITING_FOR_VISA = "WAITING_FOR_VISA",
+  VISA_IN_PROGRESS = "VISA_IN_PROGRESS",
+  VISA_COMPLETED = "VISA_COMPLETED",
+  RETURNED_FOR_EDITING = "RETURNED_FOR_EDITING",
+  WAITING_FOR_SIGNATURE = "WAITING_FOR_SIGNATURE",
   REGISTERED = "REGISTERED",
   SENT_TO_VISA = "SENT_TO_VISA",
   ON_VISA = "ON_VISA",
@@ -27,6 +35,7 @@ export enum DocumentStatus {
   SENT_TO_SIGN = "SENT_TO_SIGN",
   SIGNED = "SIGNED",
   SENT = "SENT",
+  SENT_TO_RECIPIENT = "SENT_TO_RECIPIENT",
   RECEIVED = "RECEIVED",
   READ = "READ",
   RESOLUTION_ASSIGNED = "RESOLUTION_ASSIGNED",
@@ -40,6 +49,7 @@ export enum DocumentStatus {
 
 export enum VisaActionStatus {
   PENDING = "PENDING",
+  WAITING_FOR_VISA = "WAITING_FOR_VISA",
   APPROVED = "APPROVED",
   REJECTED = "REJECTED",
   RETURNED = "RETURNED",
@@ -375,6 +385,14 @@ export interface DeliveryRecord {
 // Translations / UI Helpers
 export const GEORGIAN_DOCUMENT_STATUSES: Record<DocumentStatus, string> = {
   [DocumentStatus.DRAFT]: "პროექტი",
+  [DocumentStatus.INTERNAL_CREATED]: "შიდა დოკუმენტი შექმნილია",
+  [DocumentStatus.WAITING_FOR_AUTHOR_SIGNATURE]: "ელოდება ავტორის ხელმოწერას",
+  [DocumentStatus.WAITING_FOR_CHANCELLERY]: "ელოდება კანცელარიას",
+  [DocumentStatus.WAITING_FOR_VISA]: "ელოდება ვიზირებას",
+  [DocumentStatus.VISA_IN_PROGRESS]: "ვიზირება მიმდინარეობს",
+  [DocumentStatus.VISA_COMPLETED]: "ვიზირება დასრულებულია",
+  [DocumentStatus.RETURNED_FOR_EDITING]: "დაბრუნებულია შესასწორებლად",
+  [DocumentStatus.WAITING_FOR_SIGNATURE]: "ელოდება ხელმოწერას",
   [DocumentStatus.REGISTERED]: "რეგისტრირებული",
   [DocumentStatus.SENT_TO_VISA]: "ვიზირებაზე გაგზავნილი",
   [DocumentStatus.ON_VISA]: "ვიზირებაზე",
@@ -383,6 +401,7 @@ export const GEORGIAN_DOCUMENT_STATUSES: Record<DocumentStatus, string> = {
   [DocumentStatus.SENT_TO_SIGN]: "ხელმოსაწერად გაგზავნილი",
   [DocumentStatus.SIGNED]: "ხელმოწერილი",
   [DocumentStatus.SENT]: "გაგზავნილი",
+  [DocumentStatus.SENT_TO_RECIPIENT]: "ადრესატთან გაგზავნილი",
   [DocumentStatus.RECEIVED]: "მიღებული",
   [DocumentStatus.READ]: "წაკითხული",
   [DocumentStatus.RESOLUTION_ASSIGNED]: "რეზოლუცია დადებული",

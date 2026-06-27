@@ -10,7 +10,8 @@
     "sync:pages-root": "rm -rf assets && cp -R dist/assets assets && cp dist/index.html index.html",
     "start": "NODE_ENV=production node dist/server.cjs",
     "clean": "rm -rf dist db.json",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:workflow": "tsx tests/workflow.test.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.14",

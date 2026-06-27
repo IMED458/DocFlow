@@ -344,26 +344,35 @@ export default function App() {
       !!d.signedAt && Date.now() - new Date(d.signedAt).getTime() > 30 * 24 * 60 * 60 * 1000);
 
   const matchesFolder = (d: Document, filter: string): boolean => {
+    const flags = (d as Document & { folderFlags?: Record<string, boolean> }).folderFlags || {};
     if (isArchivedDoc(d) && filter !== "ARCHIVE_FOLDER") return false; // არქივი ცალკე საქაღალდეშია
     switch (filter) {
       case "ALL": return true;
-      case "VISA_FOLDER": return d.status === DocumentStatus.ON_VISA || d.status === DocumentStatus.SENT_TO_VISA;
-      case "UNREAD_FOLDER": return (d as Document & { readState?: string }).readState !== "READ";
-      case "READ_FOLDER": return (d as Document & { readState?: string }).readState === "READ";
-      case "COMPLETED_FOLDER": return d.status === DocumentStatus.SIGNED || d.status === DocumentStatus.COMPLETED;
+      case "VISA_FOLDER": return !!flags.visa;
+      case "SIGNING_FOLDER": return !!flags.signing;
+      case "UNREAD_FOLDER": return !!flags.unread;
+      case "READ_FOLDER": return !!flags.read;
+      case "CHANCELLERY_FOLDER": return !!flags.chancellery;
+      case "RETURNED_FOLDER": return !!flags.returned;
+      case "DRAFT_FOLDER": return !!flags.drafts;
+      case "SENT_FOLDER": return !!flags.sent;
+      case "COMPLETED_FOLDER": return !!flags.completed;
       case "ARCHIVE_FOLDER": return isArchivedDoc(d);
-      case DocumentStatus.SENT_TO_SIGN: return d.status === DocumentStatus.SENT_TO_SIGN;
+      case DocumentStatus.SENT_TO_SIGN: return !!flags.signing;
       default: return d.status === filter;
     }
   };
 
   // Counters for left side folder hierarchy
   const folderCount = (filter: string) => documents.filter(d => matchesFolder(d, filter)).length;
-  const draftCount = folderCount(DocumentStatus.DRAFT);
+  const draftCount = folderCount("DRAFT_FOLDER");
   const onVisaCount = folderCount("VISA_FOLDER");
-  const signingCount = folderCount(DocumentStatus.SENT_TO_SIGN);
+  const signingCount = folderCount("SIGNING_FOLDER");
   const unreadCount = folderCount("UNREAD_FOLDER");
   const readCount = folderCount("READ_FOLDER");
+  const chancelleryCount = folderCount("CHANCELLERY_FOLDER");
+  const returnedCount = folderCount("RETURNED_FOLDER");
+  const sentCount = folderCount("SENT_FOLDER");
   const completedCount = folderCount("COMPLETED_FOLDER");
   const archivedCount = folderCount("ARCHIVE_FOLDER");
 
@@ -537,8 +546,11 @@ export default function App() {
 	              {[
 		                { label: "წაუკითხავი", filter: "UNREAD_FOLDER", count: unreadCount, tone: "bg-sky-900/40 text-sky-300" },
 		                { label: "წაკითხული", filter: "READ_FOLDER", count: readCount, tone: "bg-slate-800 text-slate-300" },
-	                { label: "ხელმოსაწერი", filter: DocumentStatus.SENT_TO_SIGN, count: signingCount, tone: "bg-indigo-950/40 text-indigo-300" },
-	                { label: "დასრულებული", filter: "COMPLETED_FOLDER", count: completedCount, tone: "bg-emerald-950/40 text-emerald-400" },
+		                { label: "ხელმოსაწერი", filter: "SIGNING_FOLDER", count: signingCount, tone: "bg-indigo-950/40 text-indigo-300" },
+		                { label: "კანცელარია", filter: "CHANCELLERY_FOLDER", count: chancelleryCount, tone: "bg-cyan-950/40 text-cyan-300" },
+		                { label: "დაბრუნებული", filter: "RETURNED_FOLDER", count: returnedCount, tone: "bg-rose-950/40 text-rose-300" },
+		                { label: "გაგზავნილი", filter: "SENT_FOLDER", count: sentCount, tone: "bg-blue-950/40 text-blue-300" },
+		                { label: "დასრულებული", filter: "COMPLETED_FOLDER", count: completedCount, tone: "bg-emerald-950/40 text-emerald-400" },
 	                { label: "არქივი", filter: "ARCHIVE_FOLDER", count: archivedCount, tone: "bg-violet-950/40 text-violet-300" }
 	              ].map(item => (
 	                <button
@@ -560,14 +572,14 @@ export default function App() {
 
 	              <button
 	                onClick={() => {
-	                setListStatusFilter(DocumentStatus.DRAFT);
+		                setListStatusFilter("DRAFT_FOLDER");
 	                setListCategoryFilter("ALL");
 	                setActiveTab("list");
 	                setSelectedDocId(null);
 	              }}
                 className="w-full flex items-center justify-between px-4 py-2 rounded-lg text-slate-400 hover:bg-slate-800/30 hover:text-white text-left transition font-sans"
               >
-	                <span>დრაფტი</span>
+		                <span>პროექტები</span>
                 {draftCount > 0 && <span className="bg-slate-800 text-slate-300 font-mono text-[9px] px-1.5 py-0.5 rounded-md font-bold">{draftCount}</span>}
               </button>
 
@@ -606,7 +618,7 @@ export default function App() {
         <div className="bg-white border-b border-slate-100 p-4 flex items-center justify-between gap-4 h-16 shrink-0">
           <div className="flex items-center gap-2">
             <h2 className="font-display font-bold text-slate-800 text-sm md:text-base">
-              საქართველოს საჯარო სამინისტროების დოკუმენტბრუნვის პლატფორმა
+              დოკუმენტბრუნვის ელექტრონული სისტემა
             </h2>
           </div>
 
