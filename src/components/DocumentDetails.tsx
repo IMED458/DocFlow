@@ -1134,11 +1134,11 @@ export default function DocumentDetails({
             ) : (
               /* A4 Printable Sheet Display */
               <div className="bg-slate-500 p-4 sm:p-8 rounded-2xl flex flex-col items-center overflow-x-auto print:bg-white print:p-0">
-                <div id="printable-doc" className="bg-white w-[210mm] min-h-[297mm] px-[17mm] pt-[15mm] pb-[18mm] shadow-2xl relative text-slate-950 font-serif flex flex-col print:shadow-none">
-                  <div className="flex-1">
+                <div id="printable-doc" className="bg-white w-[210mm] min-h-[297mm] px-[17mm] pt-[15mm] pb-[18mm] shadow-2xl relative text-slate-950 font-serif print:shadow-none">
+                  <div>
                     <div className="official-letterhead">
                       {defaultTemplate?.headerImage ? (
-	                        <img src={defaultTemplate.headerImage} className="block w-full max-h-[40mm] object-contain object-center" alt="Header" />
+                        <img src={defaultTemplate.headerImage} className="block w-full max-h-[40mm] object-contain object-center" alt="Header" />
                       ) : (
                         <div className="grid grid-cols-[1fr_28mm_1fr] items-center gap-8 min-h-[42mm]">
                           <div className="text-center text-[13px] leading-5 font-bold">
@@ -1164,15 +1164,15 @@ export default function DocumentDetails({
                       <span></span>
                     </div>
 
-	                    <div className="grid grid-cols-2 gap-8 mt-4 items-start">
+                    <div className="grid grid-cols-2 gap-8 mt-4 items-start">
                       <div className="text-[19px] leading-none">
                         {formattedPrintDate}
                       </div>
-	                      <div className="text-right">
-	                        <Barcode value={printNumber || doc.entryNumber || doc.id} />
-	                        {printNumber && <div className="text-[20px] mt-2 tracking-wide font-mono">{printNumber}</div>}
-	                        {doc.entryNumber && <div className="text-[11px] mt-1 font-sans text-slate-600">შიდა N: {doc.entryNumber}</div>}
-	                      </div>
+                      <div className="text-right">
+                        <Barcode value={printNumber || doc.entryNumber || doc.id} />
+                        {printNumber && <div className="text-[20px] mt-2 tracking-wide font-mono">{printNumber}</div>}
+                        {doc.entryNumber && <div className="text-[11px] mt-1 font-sans text-slate-600">შიდა N: {doc.entryNumber}</div>}
+                      </div>
                     </div>
 
                     <div className="mt-8 space-y-6 text-[18px] leading-8">
@@ -1183,9 +1183,9 @@ export default function DocumentDetails({
                     </div>
                   </div>
 
-	                  <div className="mt-14 pt-4">
-	                    <div className="grid grid-cols-[1fr_34mm_78mm] items-end gap-8">
-	                      <div className="max-w-[92mm] text-[16px] leading-6">
+                  <div className="official-signature-block mt-[11mm] pt-[2mm]">
+                    <div className="grid grid-cols-[1fr_28mm_62mm] items-end gap-5">
+                      <div className="max-w-[88mm] text-[15px] leading-6">
                         <span className="block">
                           {getUserPositionAndDept(signerId) || "ხელმძღვანელი"}
                         </span>
@@ -1194,33 +1194,33 @@ export default function DocumentDetails({
                         </span>
                       </div>
 
-	                      <div className="h-[32mm] flex items-center justify-center">
-	                        {isSignedDocument && defaultStamp?.imageUrl && (
-	                          <img
-	                            src={defaultStamp.imageUrl}
-	                            alt="ბეჭედი"
-	                            className="w-[30mm] h-[30mm] object-contain opacity-95"
-	                          />
-	                        )}
-	                      </div>
+                      <div className="h-[24mm] flex items-center justify-center">
+                        {isSignedDocument && defaultStamp?.imageUrl && (
+                          <img
+                            src={defaultStamp.imageUrl}
+                            alt="ბეჭედი"
+                            className="w-[24mm] h-[24mm] object-contain opacity-95"
+                          />
+                        )}
+                      </div>
 
-	                      <div className="relative w-[78mm] h-[28mm] flex items-center justify-center">
-	                        {isSignedDocument && users.find(u => u.id === signerId)?.signatureImage && (
+                      <div className="relative w-[62mm] h-[24mm] flex items-center justify-center">
+                        {isSignedDocument && users.find(u => u.id === signerId)?.signatureImage && (
                           <img
                             src={users.find(u => u.id === signerId)?.signatureImage}
                             alt="ხელმოწერა"
-                            className="absolute w-[70mm] h-[22mm] object-contain z-10 pointer-events-none select-none"
+                            className="absolute w-[58mm] h-[20mm] object-contain z-10 pointer-events-none select-none"
                           />
                         )}
 
-	                        {!isSignedDocument && (
+                        {!isSignedDocument && (
                           <span className="text-xs font-sans text-slate-400 border-b border-slate-300 px-10 py-1">
                             ხელმოწერის ადგილი
                           </span>
                         )}
                       </div>
                     </div>
-	                  </div>
+                  </div>
                 </div>
 
                 {/* Print button */}

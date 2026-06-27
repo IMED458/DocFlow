@@ -70,6 +70,12 @@
   margin: 0 0 12px;
 }
 
+.official-signature-block {
+  break-inside: avoid;
+  page-break-inside: avoid;
+  clear: both;
+}
+
 @media print {
   @page {
     size: A4;
@@ -91,5 +97,10 @@
     width: 210mm !important;
     min-height: 297mm !important;
     box-shadow: none !important;
+  }
+
+  .official-signature-block {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
   }
 }
