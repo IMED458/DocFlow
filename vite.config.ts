@@ -7,6 +7,11 @@ export default defineConfig(() => {
   return {
     base: process.env.GITHUB_PAGES === 'true' ? '/DocFlow/' : '/',
     plugins: [react(), tailwindcss()],
+    build: {
+      rollupOptions: {
+        input: path.resolve(__dirname, 'app.html'),
+      },
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
