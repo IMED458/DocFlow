@@ -31,8 +31,7 @@ import {
   GEORGIAN_DOCUMENT_STATUSES,
   GEORGIAN_DOCUMENT_TYPES,
   User,
-  UserRole,
-  GEORGIAN_ROLES
+  UserRole
 } from "./types.js";
 
 import Dashboard from "./components/Dashboard.js";
@@ -57,6 +56,7 @@ export default function App() {
   // Tabs: "dashboard", "list", "new", "admin", "details"
   const [activeTab, setActiveTab] = useState("dashboard");
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
+  const [openDocumentIds, setOpenDocumentIds] = useState<string[]>([]);
 
   // Status Filter overrides from dashboard
   const [listStatusFilter, setListStatusFilter] = useState<string>("ALL");
@@ -246,12 +246,13 @@ export default function App() {
 
       if (res.ok) {
         const createdDoc = await res.json();
-        setShowNewDoc(false);
-        setNewDocStep(1);
-        await loadInitialData(currentUser);
-        setSelectedDocId(createdDoc.id);
-        setActiveTab("list");
-      }
+	        setShowNewDoc(false);
+	        setNewDocStep(1);
+	        await loadInitialData(currentUser);
+	        setOpenDocumentIds([createdDoc.id]);
+	        setSelectedDocId(createdDoc.id);
+	        setActiveTab("list");
+	      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -279,13 +280,14 @@ export default function App() {
     if (!currentUser) return;
     if (!window.confirm("ნამდვილად გსურთ დოკუმენტის სრულად წაშლა? ეს ქმედება შეუქცევადია.")) return;
     try {
-      const res = await fetch(`/api/documents/${id}`, {
+	      const res = await fetch(`/api/documents/${id}`, {
         method: "DELETE",
         headers: { "Authorization": `Bearer jwt-mock-token-${currentUser.id}` }
       });
-      if (res.ok) {
-        if (selectedDocId === id) setSelectedDocId(null);
-        loadInitialData(currentUser);
+	      if (res.ok) {
+	        setOpenDocumentIds(prev => prev.filter(docId => docId !== id));
+	        if (selectedDocId === id) setSelectedDocId(null);
+	        loadInitialData(currentUser);
       } else {
         const err = await res.json().catch(() => ({}));
         window.alert(err.message || "წაშლა ვერ მოხერხდა");
@@ -323,7 +325,9 @@ export default function App() {
   };
 
   const handleOpenDocument = async (id: string) => {
+    setOpenDocumentIds(prev => prev.includes(id) ? prev : [...prev, id]);
     setSelectedDocId(id);
+    setActiveTab("details");
     if (!currentUser) return;
     try {
       await fetch(`/api/documents/${id}/read`, {
@@ -334,6 +338,24 @@ export default function App() {
     } catch (e) {
       console.error(e);
     }
+  };
+
+  const closeDocumentTab = (id: string) => {
+    setOpenDocumentIds(prev => {
+      const next = prev.filter(docId => docId !== id);
+      if (selectedDocId === id) {
+        setSelectedDocId(next[next.length - 1] || null);
+      }
+      return next;
+    });
+  };
+
+  const documentTabLabel = (id: string) => {
+    const doc = documents.find(item => item.id === id);
+    if (!doc) return "დოკუმენტი";
+    const number = doc.documentNumber || doc.entryNumber || "ახალი";
+    const date = doc.registrationDate || doc.documentDate || doc.createdAt?.split("T")[0];
+    return `${GEORGIAN_DOCUMENT_TYPES[doc.documentType] || "დოკუმენტი"} ${number}${date ? ` (${date})` : ""}`;
   };
 
   // საქაღალდის ფილტრის ერთიანი ლოგიკა — გამოიყენება როგორც დათვლისთვის,
@@ -468,7 +490,7 @@ export default function App() {
               {currentUser.firstName} {currentUser.lastName}
             </span>
             <span className="text-[10px] text-indigo-300 font-semibold font-sans block mt-0.5 truncate">
-              {GEORGIAN_ROLES[currentUser.role]}
+              {currentUser.positionName || "თანამდებობა არ არის მითითებული"}
             </span>
             <span className="text-[8px] text-emerald-400 font-sans flex items-center gap-1 mt-1">
               ● აქტიური
@@ -654,12 +676,11 @@ export default function App() {
                       {notifications.map(n => (
                         <div
                           key={n.id}
-                          onClick={() => {
-                            handleReadNotification(n.id);
-                            setSelectedDocId(n.documentId);
-                            setActiveTab("details");
-                            setShowNotificationDropdown(false);
-                          }}
+	                          onClick={() => {
+	                            handleReadNotification(n.id);
+	                            if (n.documentId) handleOpenDocument(n.documentId);
+	                            setShowNotificationDropdown(false);
+	                          }}
                           className={`p-2.5 rounded-xl cursor-pointer text-xxs font-sans transition border ${
                             n.isRead ? "bg-white border-slate-100 text-slate-500" : "bg-indigo-50/40 border-indigo-100 text-slate-800 font-semibold"
                           }`}
@@ -681,15 +702,53 @@ export default function App() {
           </div>
         </div>
 
-        {/* Content canvas with scrollable area */}
-        <div className="flex-1 p-6 overflow-y-auto">
-          {/* Details tab override */}
-          {selectedDocId ? (
-            <DocumentDetails
+	        {/* Content canvas with scrollable area */}
+	        <div className="flex-1 p-6 overflow-y-auto">
+	          {openDocumentIds.length > 0 && (
+	            <div className="mb-4 flex items-center gap-1 overflow-x-auto border-b border-slate-200 pb-0">
+	              <button
+	                type="button"
+	                onClick={() => setSelectedDocId(null)}
+	                className={`inline-flex h-10 items-center gap-2 rounded-t-xl border border-b-0 px-4 text-xs font-bold transition ${
+	                  !selectedDocId ? "bg-white text-slate-800 border-slate-200" : "bg-slate-100 text-slate-500 border-slate-200 hover:bg-white"
+	                }`}
+	              >
+	                დოკუმენტები
+	              </button>
+	              {openDocumentIds.map(id => (
+	                <div
+	                  key={id}
+	                  className={`inline-flex h-10 max-w-[320px] items-center gap-2 rounded-t-xl border border-b-0 px-3 text-xs font-bold transition ${
+	                    selectedDocId === id ? "bg-white text-sky-900 border-slate-200" : "bg-slate-100 text-slate-500 border-slate-200 hover:bg-white"
+	                  }`}
+	                >
+	                  <button
+	                    type="button"
+	                    onClick={() => setSelectedDocId(id)}
+	                    className="truncate"
+	                    title={documentTabLabel(id)}
+	                  >
+	                    {documentTabLabel(id)}
+	                  </button>
+	                  <button
+	                    type="button"
+	                    onClick={() => closeDocumentTab(id)}
+	                    className="rounded-md p-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+	                    title="დახურვა"
+	                  >
+	                    <X className="h-3.5 w-3.5" />
+	                  </button>
+	                </div>
+	              ))}
+	            </div>
+	          )}
+	          {/* Details tab override */}
+	          {selectedDocId ? (
+	            <DocumentDetails
               documentId={selectedDocId}
               currentUser={currentUser}
               documentTypes={documentTypes}
-              onBack={() => setSelectedDocId(null)}
+	              onBack={() => closeDocumentTab(selectedDocId)}
               onRefresh={() => loadInitialData(currentUser)}
               onOpenDocument={handleOpenDocument}
             />

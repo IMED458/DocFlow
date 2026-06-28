@@ -121,6 +121,7 @@ export default function DocumentDetails({
   const [versions, setVersions] = useState<any[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
   const [allDocs, setAllDocs] = useState<any[]>([]);
+  const [workflowMessage, setWorkflowMessage] = useState("");
 
   // Right sidebar collapsible sections toggles
   const [openSections, setOpenSections] = useState({
@@ -499,9 +500,33 @@ export default function DocumentDetails({
 
   const handleSaveAsDraft = async () => {
     await handleSaveMetadata({ status: DocumentStatus.DRAFT });
+    setWorkflowMessage("დოკუმენტი დრაფტად შეინახა.");
   };
 
   const handleSaveAndForward = async () => {
+    if (doc.category === DocumentCategory.INCOMING) {
+      try {
+        const res = await fetch(`/api/documents/${doc.id}/register`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer jwt-mock-token-${currentUser.id}`
+          },
+          body: JSON.stringify({ userId: currentUser.id, skipSignature: true })
+        });
+        if (res.ok) {
+          setWorkflowMessage("გარე კორესპონდენცია დარეგისტრირდა ხელმოწერისა და ვიზირების გარეშე.");
+          loadDetails();
+          onRefresh();
+        } else {
+          const err = await res.json().catch(() => ({}));
+          window.alert(err.message || "გარე კორესპონდენციის რეგისტრაცია ვერ მოხერხდა.");
+        }
+      } catch (e) {
+        console.error(e);
+      }
+      return;
+    }
     if (selectedVisaUsers.length > 0) {
       await handleSendToVisa();
       return;
@@ -521,10 +546,11 @@ export default function DocumentDetails({
           "Authorization": `Bearer jwt-mock-token-${currentUser.id}`
         },
 	        body: JSON.stringify({ signerId: doc.authorId, userId: currentUser.id })
-      });
-      if (res.ok) {
-        loadDetails();
-        onRefresh();
+	      });
+	      if (res.ok) {
+	        setWorkflowMessage("დოკუმენტი გაიგზავნა ხელმოსაწერად.");
+	        loadDetails();
+	        onRefresh();
       } else {
         const err = await res.json().catch(() => ({}));
         window.alert(err.message || "ხელმოსაწერად გაგზავნა ვერ მოხერხდა.");
@@ -815,10 +841,11 @@ export default function DocumentDetails({
         },
         body: JSON.stringify({ visaUsers: selectedVisaUsers, userId: currentUser.id })
       });
-	      if (res.ok) {
-	        setSelectedVisaUsers([]);
-	        loadDetails();
-	        onRefresh();
+		      if (res.ok) {
+		        setSelectedVisaUsers([]);
+		        setWorkflowMessage("დოკუმენტი გაიგზავნა ვიზირებაზე.");
+		        loadDetails();
+		        onRefresh();
 	      } else {
 	        const err = await res.json().catch(() => ({}));
 	        window.alert(err.message || "ვიზირებაზე გაგზავნა ვერ მოხერხდა.");
@@ -861,9 +888,10 @@ export default function DocumentDetails({
         },
         body: JSON.stringify({ signerId: doc.authorId, userId: currentUser.id })
       });
-	      if (res.ok) {
-	        loadDetails();
-	        onRefresh();
+		      if (res.ok) {
+		        setWorkflowMessage("დოკუმენტი გაიგზავნა ხელმოსაწერად.");
+		        loadDetails();
+		        onRefresh();
 	      } else {
 	        const err = await res.json().catch(() => ({}));
 	        window.alert(err.message || "ხელმოსაწერად გაგზავნა ვერ მოხერხდა.");
@@ -1004,6 +1032,7 @@ export default function DocumentDetails({
     type: "INTERNAL" as const
   }];
   const canEditWorkflow = doc.status !== DocumentStatus.SIGNED && doc.status !== DocumentStatus.COMPLETED && doc.status !== DocumentStatus.CANCELLED;
+  const canSubmitWorkflow = [DocumentStatus.DRAFT, DocumentStatus.RETURNED_FOR_EDITING, DocumentStatus.VISA_RETURNED].includes(doc.status);
   const employeeUsers = users;
   // ყველა თანამშრომელს აქვს ყველაფრის უფლება; ადმინს დამატებით — სრული წაშლა.
   const canCancelDocument = true;
@@ -1177,8 +1206,14 @@ export default function DocumentDetails({
                   />
                 </div>
 
-                {canEditWorkflow && (
-                  <div className="flex flex-wrap items-center gap-3 pt-4 border-t border-slate-100">
+	                {workflowMessage && (
+	                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+	                    {workflowMessage}
+	                  </div>
+	                )}
+
+	                {canEditWorkflow && canSubmitWorkflow && (
+	                  <div className="flex flex-wrap items-center gap-3 pt-4 border-t border-slate-100">
                     <button
                       type="button"
                       onClick={handleSaveAndForward}
@@ -1201,7 +1236,7 @@ export default function DocumentDetails({
             ) : (
               /* A4 Printable Sheet Display */
               <div className="bg-slate-500 p-4 sm:p-8 rounded-2xl flex flex-col items-center overflow-x-auto print:bg-white print:p-0">
-                <div id="printable-doc" className="bg-white w-[210mm] min-h-[297mm] px-[17mm] pt-[15mm] pb-[18mm] shadow-2xl relative text-slate-950 font-serif print:shadow-none">
+	                <div id="printable-doc" className="bg-white w-[210mm] min-h-[297mm] pl-[25mm] pr-[20mm] pt-[20mm] pb-[20mm] shadow-2xl relative text-[11pt] text-slate-950 font-serif print:shadow-none">
                   <div>
                     <div className="official-letterhead">
                       {defaultTemplate?.headerImage ? (
@@ -1242,7 +1277,7 @@ export default function DocumentDetails({
                       </div>
                     </div>
 
-                    <div className="mt-8 space-y-6 text-[18px] leading-8">
+	                    <div className="mt-8 space-y-6 text-[11pt] leading-[1.45]">
                       <div
                         className="official-document-body prose max-w-none text-slate-950 font-serif whitespace-pre-wrap break-words"
                         dangerouslySetInnerHTML={{ __html: doc.body || "<p class='text-slate-400 italic'>ტექსტი არ არის შევსებული</p>" }}

@@ -975,6 +975,14 @@ async function handleApi(request: Request, init?: RequestInit) {
 		      return json(doc);
 		    }
 	    if (method === "POST" && parts[2] === "signature" && parts[3] === "request") {
+	      if (doc.category === "INCOMING") {
+	        assignDocumentNumber(db, doc);
+	        doc.status = "REGISTERED";
+	        doc.signatureStatus = undefined;
+	        doc.updatedAt = new Date().toISOString();
+	        await writeDb(db);
+	        return json(doc);
+	      }
 	      if (!canProceedToSignature(db, docId)) {
 	        return json({ message: "არჩეული ვიზირების მონაწილეების დადასტურებამდე ხელმოწერა ვერ დაიწყება." }, { status: 409 });
 	      }

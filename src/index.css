@@ -61,7 +61,7 @@
 .official-document-body,
 .official-document-body p,
 .official-document-body div {
-  font-size: 18px;
+  font-size: 11pt;
   line-height: 1.45;
   text-align: justify;
 }
@@ -96,6 +96,7 @@
     inset: 0 auto auto 0 !important;
     width: 210mm !important;
     min-height: 297mm !important;
+    padding: 20mm 20mm 20mm 25mm !important;
     box-shadow: none !important;
   }
 

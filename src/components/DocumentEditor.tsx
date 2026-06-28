@@ -427,11 +427,11 @@ export default function DocumentEditor({
       {/* Editor Body and Versions Sidebar Split Pane */}
       <div className="flex flex-1 overflow-hidden">
         {/* Editor Writing Board */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-50 flex justify-center">
-          <div className="bg-white w-full max-w-5xl p-6 sm:p-12 min-h-[70vh] border border-slate-200/60 rounded-xl shadow-xs focus:outline-hidden">
+        <div className="flex-1 overflow-hidden p-4 sm:p-8 bg-slate-50 flex justify-center">
+          <div className="bg-white w-full max-w-5xl p-6 sm:p-12 h-[70vh] border border-slate-200/60 rounded-xl shadow-xs focus:outline-hidden">
             {isReadOnly ? (
               <div
-                className="prose max-w-none text-slate-800 font-sans leading-relaxed whitespace-pre-wrap break-words"
+                className="prose max-w-none h-full overflow-y-auto pr-3 text-slate-800 font-sans leading-relaxed whitespace-pre-wrap break-words"
                 dangerouslySetInnerHTML={{ __html: body || "<p className='text-slate-400 italic'>ტექსტი ცარიელია</p>" }}
               ></div>
             ) : (
@@ -446,7 +446,7 @@ export default function DocumentEditor({
 	                onMouseUp={saveSelection}
 	                onKeyUp={saveSelection}
 	                onFocus={saveSelection}
-                className="min-h-[64vh] focus:outline-hidden font-sans text-slate-800 leading-relaxed text-sm outline-hidden whitespace-pre-wrap break-words"
+                className="h-full overflow-y-auto pr-3 focus:outline-hidden font-sans text-slate-800 leading-relaxed text-sm outline-hidden whitespace-pre-wrap break-words"
                 placeholder="დაწერეთ დოკუმენტის შინაარსი ქართულად აქ..."
               ></div>
             )}
