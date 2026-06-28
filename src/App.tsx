@@ -704,28 +704,19 @@ export default function App() {
 
 	        {/* Content canvas with scrollable area */}
 	        <div className="flex-1 p-6 overflow-y-auto">
-	          {openDocumentIds.length > 0 && (
-	            <div className="mb-4 flex items-center gap-1 overflow-x-auto border-b border-slate-200 pb-0">
-	              <button
-	                type="button"
-	                onClick={() => setSelectedDocId(null)}
-	                className={`inline-flex h-10 items-center gap-2 rounded-t-xl border border-b-0 px-4 text-xs font-bold transition ${
-	                  !selectedDocId ? "bg-white text-slate-800 border-slate-200" : "bg-slate-100 text-slate-500 border-slate-200 hover:bg-white"
-	                }`}
-	              >
-	                დოკუმენტები
-	              </button>
-	              {openDocumentIds.map(id => (
-	                <div
-	                  key={id}
-	                  className={`inline-flex h-10 max-w-[320px] items-center gap-2 rounded-t-xl border border-b-0 px-3 text-xs font-bold transition ${
-	                    selectedDocId === id ? "bg-white text-sky-900 border-slate-200" : "bg-slate-100 text-slate-500 border-slate-200 hover:bg-white"
-	                  }`}
-	                >
+		          {openDocumentIds.length > 0 && (
+		            <div className="mb-4 flex select-none items-center gap-1 overflow-x-auto border-b border-slate-200 pb-0">
+		              {openDocumentIds.map(id => (
+		                <div
+		                  key={id}
+		                  className={`inline-flex h-10 max-w-[320px] items-center gap-2 rounded-t-xl border border-b-0 px-3 text-xs font-bold transition select-none ${
+		                    selectedDocId === id ? "bg-white text-sky-900 border-slate-200" : "bg-slate-100 text-slate-500 border-slate-200 hover:bg-white"
+		                  }`}
+		                >
 	                  <button
 	                    type="button"
 	                    onClick={() => setSelectedDocId(id)}
-	                    className="truncate"
+		                    className="truncate select-none"
 	                    title={documentTabLabel(id)}
 	                  >
 	                    {documentTabLabel(id)}
