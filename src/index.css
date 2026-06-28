@@ -79,7 +79,7 @@
 @media print {
   @page {
     size: A4;
-    margin: 20mm 20mm 20mm 25mm;
+    margin: 20mm 25mm 20mm 30mm;
   }
 
   html,

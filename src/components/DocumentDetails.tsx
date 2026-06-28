@@ -1236,7 +1236,7 @@ export default function DocumentDetails({
             ) : (
               /* A4 Printable Sheet Display */
               <div className="bg-slate-500 p-4 sm:p-8 rounded-2xl flex flex-col items-center overflow-x-auto print:bg-white print:p-0">
-	                <div id="printable-doc" className="bg-white w-[210mm] min-h-[297mm] pl-[25mm] pr-[20mm] pt-[20mm] pb-[20mm] shadow-2xl relative text-[11pt] text-slate-950 font-serif print:shadow-none">
+	                <div id="printable-doc" className="bg-white w-[210mm] min-h-[297mm] pl-[30mm] pr-[25mm] pt-[20mm] pb-[20mm] shadow-2xl relative text-[11pt] text-slate-950 font-serif print:shadow-none">
                   <div>
                     <div className="official-letterhead">
                       {defaultTemplate?.headerImage ? (
