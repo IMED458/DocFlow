@@ -124,6 +124,7 @@ export default function DocumentDetails({
   const [tasks, setTasks] = useState<any[]>([]);
   const [allDocs, setAllDocs] = useState<any[]>([]);
   const [workflowMessage, setWorkflowMessage] = useState("");
+  const [generatingPdf, setGeneratingPdf] = useState(false);
   const initializedDraftVisaDocRef = useRef<string | null>(null);
 
   // Right sidebar collapsible sections toggles
@@ -393,6 +394,87 @@ export default function DocumentDetails({
   const handlePrintPdf = () => {
     setViewMode("print");
     window.setTimeout(() => window.print(), 150);
+  };
+
+  const handleGeneratePdf = async () => {
+    setGeneratingPdf(true);
+    setViewMode("print");
+
+    try {
+      await new Promise<void>((resolve) => {
+        window.setTimeout(resolve, 250);
+      });
+
+      const element = window.document.getElementById("printable-doc");
+      if (!element) {
+        window.alert("საბეჭდი დოკუმენტი ვერ მოიძებნა.");
+        return;
+      }
+
+      const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+        import("html2canvas"),
+        import("jspdf")
+      ]);
+
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: "#ffffff",
+        windowWidth: element.scrollWidth,
+        windowHeight: element.scrollHeight
+      });
+
+      const pdf = new jsPDF("p", "mm", "a4");
+      const pageWidthMm = 210;
+      const pageHeightMm = 297;
+      const pageHeightPx = Math.floor((canvas.width * pageHeightMm) / pageWidthMm);
+      const pageCanvas = window.document.createElement("canvas");
+      const context = pageCanvas.getContext("2d");
+
+      if (!context) {
+        window.alert("PDF-ის მომზადება ვერ მოხერხდა.");
+        return;
+      }
+
+      pageCanvas.width = canvas.width;
+
+      let sourceY = 0;
+      let pageIndex = 0;
+      while (sourceY < canvas.height) {
+        const sliceHeightPx = Math.min(pageHeightPx, canvas.height - sourceY);
+        pageCanvas.height = sliceHeightPx;
+        context.clearRect(0, 0, pageCanvas.width, pageCanvas.height);
+        context.drawImage(
+          canvas,
+          0,
+          sourceY,
+          canvas.width,
+          sliceHeightPx,
+          0,
+          0,
+          canvas.width,
+          sliceHeightPx
+        );
+
+        const imageData = pageCanvas.toDataURL("image/jpeg", 0.95);
+        const sliceHeightMm = (sliceHeightPx * pageWidthMm) / canvas.width;
+        if (pageIndex > 0) pdf.addPage();
+        pdf.addImage(imageData, "JPEG", 0, 0, pageWidthMm, sliceHeightMm);
+
+        sourceY += sliceHeightPx;
+        pageIndex += 1;
+      }
+
+      const rawName = doc.documentNumber || doc.entryNumber || doc.id;
+      const safeName = rawName.replace(/[^a-zA-Z0-9ა-ჰ._-]+/g, "_");
+      pdf.save(`DocFlow-${safeName}.pdf`);
+    } catch (error) {
+      console.error("Failed to generate PDF", error);
+      window.alert("PDF-ის გენერაცია ვერ მოხერხდა. სცადეთ თავიდან.");
+    } finally {
+      setGeneratingPdf(false);
+    }
   };
 
   const handleChancelleryForward = async () => {
@@ -1089,11 +1171,12 @@ export default function DocumentDetails({
           )}
 
 	          <button
-	            onClick={handlePrintPdf}
+	            onClick={handleGeneratePdf}
+              disabled={generatingPdf}
             className="flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-4 py-2 rounded-xl text-xs font-sans font-semibold transition"
           >
-            <Printer className="w-4 h-4" />
-	            ბეჭდვა
+            {generatingPdf ? <Clock className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+	            {generatingPdf ? "PDF მზადდება..." : "PDF გენერაცია"}
 	          </button>
 
 	          {isCurrentUserChancellery && hasPendingChancellery && (
@@ -1319,11 +1402,19 @@ export default function DocumentDetails({
                 {/* Print button */}
                 <div className="flex items-center gap-2 mt-4 self-center">
                   <button
-	                    onClick={handlePrintPdf}
-                    className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-xl text-xs font-sans font-semibold transition shadow"
+                    onClick={handlePrintPdf}
+                    className="flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 px-5 py-2.5 rounded-xl text-xs font-sans font-semibold transition shadow"
                   >
                     <Printer className="w-4 h-4" />
-                    ბეჭდვა / PDF გენერაცია
+                    ბეჭდვა
+                  </button>
+                  <button
+	                    onClick={handleGeneratePdf}
+                    disabled={generatingPdf}
+                    className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-xl text-xs font-sans font-semibold transition shadow"
+                  >
+                    {generatingPdf ? <Clock className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                    {generatingPdf ? "PDF მზადდება..." : "PDF გენერაცია"}
                   </button>
                 </div>
               </div>
