@@ -47,6 +47,7 @@ interface DocumentDetailsProps {
   onBack: () => void;
   onRefresh: () => void;
   onOpenDocument?: (id: string) => void;
+  onDeleteDocument?: (id: string) => void;
 }
 
 const SYNC_EVENT_NAME = "docflow:data-changed";
@@ -106,7 +107,8 @@ export default function DocumentDetails({
   documentTypes = [],
   onBack,
   onRefresh,
-  onOpenDocument
+  onOpenDocument,
+  onDeleteDocument
 }: DocumentDetailsProps) {
   const [viewMode, setViewMode] = useState<"edit" | "print">("edit");
   const [doc, setDoc] = useState<Document | null>(null);
@@ -411,26 +413,6 @@ export default function DocumentDetails({
       } else {
         const err = await res.json().catch(() => ({}));
         window.alert(err.message || "გადაგზავნა ვერ მოხერხდა.");
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  // ადმინისტრატორის სრული წაშლა
-  const handleDeleteDocument = async () => {
-    if (!window.confirm("ნამდვილად გსურთ დოკუმენტის სრულად წაშლა? ეს ქმედება შეუქცევადია.")) return;
-    try {
-      const res = await fetch(`/api/documents/${doc.id}`, {
-        method: "DELETE",
-        headers: { "Authorization": `Bearer jwt-mock-token-${currentUser.id}` }
-      });
-      if (res.ok) {
-        onRefresh();
-        onBack();
-      } else {
-        const err = await res.json().catch(() => ({}));
-        window.alert(err.message || "წაშლა ვერ მოხერხდა");
       }
     } catch (e) {
       console.error(e);
@@ -1126,8 +1108,8 @@ export default function DocumentDetails({
 
           {/* Admin: full delete */}
           {isAdmin && (
-            <button
-              onClick={handleDeleteDocument}
+	            <button
+	              onClick={() => onDeleteDocument?.(doc.id)}
               className="flex items-center gap-1.5 bg-rose-600 hover:bg-rose-500 text-white px-4 py-2 rounded-xl text-xs font-sans font-semibold transition shadow-xs"
             >
               <Trash2 className="w-4 h-4" />

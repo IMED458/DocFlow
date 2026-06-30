@@ -286,9 +286,11 @@ export default function App() {
       });
 	      if (res.ok) {
 	        setOpenDocumentIds(prev => prev.filter(docId => docId !== id));
-	        if (selectedDocId === id) setSelectedDocId(null);
-	        loadInitialData(currentUser);
-      } else {
+	        setSelectedDocId(null);
+	        setActiveTab("list");
+	        await loadInitialData(currentUser);
+	        window.alert("დოკუმენტი წაიშალა.");
+	      } else {
         const err = await res.json().catch(() => ({}));
         window.alert(err.message || "წაშლა ვერ მოხერხდა");
       }
@@ -740,9 +742,10 @@ export default function App() {
               currentUser={currentUser}
               documentTypes={documentTypes}
 	              onBack={() => closeDocumentTab(selectedDocId)}
-              onRefresh={() => loadInitialData(currentUser)}
-              onOpenDocument={handleOpenDocument}
-            />
+	              onRefresh={() => loadInitialData(currentUser)}
+	              onOpenDocument={handleOpenDocument}
+	              onDeleteDocument={handleDeleteDocument}
+	            />
           ) : (
             <>
               {/* Tab: Dashboard */}
