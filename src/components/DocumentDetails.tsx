@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   FileText,
   FileCode,
@@ -122,6 +122,7 @@ export default function DocumentDetails({
   const [tasks, setTasks] = useState<any[]>([]);
   const [allDocs, setAllDocs] = useState<any[]>([]);
   const [workflowMessage, setWorkflowMessage] = useState("");
+  const initializedDraftVisaDocRef = useRef<string | null>(null);
 
   // Right sidebar collapsible sections toggles
   const [openSections, setOpenSections] = useState({
@@ -249,8 +250,15 @@ export default function DocumentDetails({
         setAllDocs(Array.isArray(docsRes) ? docsRes : []);
       } catch { /* noop */ }
 
-      setDoc(resDoc);
-      setFiles(resFiles);
+	      setDoc(resDoc);
+	      if (initializedDraftVisaDocRef.current !== resDoc.id && Array.isArray(resDoc.draftVisaUserIds)) {
+	        setSelectedVisaUsers(resDoc.draftVisaUserIds);
+	        initializedDraftVisaDocRef.current = resDoc.id;
+	      } else if (initializedDraftVisaDocRef.current !== resDoc.id && resDoc.status !== DocumentStatus.DRAFT) {
+	        setSelectedVisaUsers([]);
+	        initializedDraftVisaDocRef.current = resDoc.id;
+	      }
+	      setFiles(resFiles);
       setRecipients(resRecs);
       setBasisLinks(resBasis);
       setVisaHistory(resVisa);
@@ -499,7 +507,7 @@ export default function DocumentDetails({
   };
 
   const handleSaveAsDraft = async () => {
-    await handleSaveMetadata({ status: DocumentStatus.DRAFT });
+    await handleSaveMetadata({ status: DocumentStatus.DRAFT, draftVisaUserIds: selectedVisaUsers } as Partial<Document> & { draftVisaUserIds: string[] });
     setWorkflowMessage("დოკუმენტი დრაფტად შეინახა.");
   };
 
@@ -527,8 +535,9 @@ export default function DocumentDetails({
       }
       return;
     }
-    if (selectedVisaUsers.length > 0) {
-      await handleSendToVisa();
+    const visaUsersToSend = selectedVisaUsers.length > 0 ? selectedVisaUsers : ((doc as Document & { draftVisaUserIds?: string[] }).draftVisaUserIds || []);
+    if (visaUsersToSend.length > 0) {
+      await handleSendToVisa(visaUsersToSend);
       return;
     }
     const visaActions = visaHistory.filter((h: any) => h.role === "VISA");
@@ -827,8 +836,8 @@ export default function DocumentDetails({
   };
 
   // Send to Visa Approvers
-  const handleSendToVisa = async () => {
-    if (selectedVisaUsers.length === 0) {
+  const handleSendToVisa = async (visaUsersOverride = selectedVisaUsers) => {
+    if (visaUsersOverride.length === 0) {
       window.alert("აირჩიეთ მინიმუმ ერთი ვიზირების მონაწილე.");
       return;
     }
@@ -839,7 +848,7 @@ export default function DocumentDetails({
           "Content-Type": "application/json",
           "Authorization": `Bearer jwt-mock-token-${currentUser.id}`
         },
-        body: JSON.stringify({ visaUsers: selectedVisaUsers, userId: currentUser.id })
+        body: JSON.stringify({ visaUsers: visaUsersOverride, userId: currentUser.id })
       });
 		      if (res.ok) {
 		        setSelectedVisaUsers([]);
@@ -1031,8 +1040,8 @@ export default function DocumentDetails({
     position: getUserPositionAndDept(doc.authorId),
     type: "INTERNAL" as const
   }];
-  const canEditWorkflow = doc.status !== DocumentStatus.SIGNED && doc.status !== DocumentStatus.COMPLETED && doc.status !== DocumentStatus.CANCELLED;
-  const canSubmitWorkflow = [DocumentStatus.DRAFT, DocumentStatus.RETURNED_FOR_EDITING, DocumentStatus.VISA_RETURNED].includes(doc.status);
+	  const canEditWorkflow = doc.status !== DocumentStatus.SIGNED && doc.status !== DocumentStatus.COMPLETED && doc.status !== DocumentStatus.CANCELLED;
+	  const canSubmitWorkflow = [DocumentStatus.DRAFT, DocumentStatus.RETURNED_FOR_EDITING, DocumentStatus.VISA_RETURNED].includes(doc.status);
   const employeeUsers = users;
   // ყველა თანამშრომელს აქვს ყველაფრის უფლება; ადმინს დამატებით — სრული წაშლა.
   const canCancelDocument = true;
@@ -1718,13 +1727,20 @@ export default function DocumentDetails({
                         </label>
                       ))}
                     </div>
-                    <button
-                      onClick={handleSendToVisa}
-                      disabled={selectedVisaUsers.length === 0}
-                      className="w-full bg-slate-900 hover:bg-slate-800 text-white text-xs font-sans font-semibold py-2 rounded-lg transition disabled:opacity-40"
-                    >
-                      ვიზირებაზე გაგზავნა
-                    </button>
+	                    <button
+	                      onClick={() => {
+	                        if (canSubmitWorkflow) {
+	                          handleSaveMetadata({ draftVisaUserIds: selectedVisaUsers } as Partial<Document> & { draftVisaUserIds: string[] });
+	                          setWorkflowMessage("ვიზირების მონაწილეები დრაფტში შეინახა. გასაგზავნად დააჭირეთ „შენახვა და გადაგზავნა“.");
+	                        } else {
+	                          handleSendToVisa();
+	                        }
+	                      }}
+	                      disabled={selectedVisaUsers.length === 0}
+	                      className="w-full bg-slate-900 hover:bg-slate-800 text-white text-xs font-sans font-semibold py-2 rounded-lg transition disabled:opacity-40"
+	                    >
+	                      {canSubmitWorkflow ? "მონიშვნის შენახვა" : "ვიზირებაზე გაგზავნა"}
+	                    </button>
                   </div>
                 )}
 

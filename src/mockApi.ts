@@ -772,14 +772,11 @@ async function handleApi(request: Request, init?: RequestInit) {
 	        createdAt: now,
 	        updatedAt: now,
 	      };
-	      assignInternalNumber(db, created);
-	      db.documents.unshift(created);
-      if (authorId !== userId || body.signerId) {
-        ensureSignatureAction(db, created, body.signerId || authorId, true);
-      }
-	      await writeDb(db);
-	      return json(created, { status: 201 });
-	    }
+		      assignInternalNumber(db, created);
+		      db.documents.unshift(created);
+		      await writeDb(db);
+		      return json(created, { status: 201 });
+		    }
     if (!doc) return json({ message: "დოკუმენტი ვერ მოიძებნა" }, { status: 404 });
     if (parts[2] === "read" && method === "POST") {
       const state = markDocumentRead(db, docId, userId);
@@ -926,9 +923,10 @@ async function handleApi(request: Request, init?: RequestInit) {
 		      const body = await readBody(init);
 		      const visaUsers = Array.from(new Set((body.visaUsers || []).filter(Boolean)));
 		      if (visaUsers.length === 0) return json({ message: "აირჩიეთ ვიზირების მონაწილე ან გაგზავნეთ პირდაპირ ხელმოსაწერად." }, { status: 400 });
-		      doc.status = "VISA_IN_PROGRESS";
-		      doc.visaStatus = "PENDING";
-		      doc.signatureStatus = undefined;
+			      doc.status = "VISA_IN_PROGRESS";
+			      doc.visaStatus = "PENDING";
+			      doc.signatureStatus = undefined;
+		      doc.draftVisaUserIds = [];
 		      db.visa_actions = (db.visa_actions || []).filter((item: any) =>
 	        !(item.documentId === docId && item.role === "VISA" && item.status === "PENDING")
 	      );
@@ -988,8 +986,9 @@ async function handleApi(request: Request, init?: RequestInit) {
 	      }
 		      const body = await readBody(init);
 		      const targetSignerId = body.signerId || doc.authorId;
-		      doc.status = "WAITING_FOR_SIGNATURE";
-		      doc.signatureStatus = "PENDING";
+			      doc.status = "WAITING_FOR_SIGNATURE";
+			      doc.signatureStatus = "PENDING";
+		      doc.draftVisaUserIds = [];
 		      const hasPending = db.visa_actions.some((item) => item.documentId === docId && item.userId === targetSignerId && item.role === "SIGN" && item.status === "PENDING");
 		      if (hasPending) {
 		        await writeDb(db);
