@@ -121,8 +121,30 @@ function firestoreCollectionUrl(collectionName: string, pageToken?: string) {
   return `${FIRESTORE_DOCUMENTS_BASE}/${encodeURIComponent(collectionName)}?${params.toString()}`;
 }
 
-function firestoreCommitUrl() {
-  return `${FIRESTORE_DOCUMENTS_BASE}:commit?${FIRESTORE_API_KEY_PARAM}`;
+// ცალკეული დოკუმენტის URL — PATCH/DELETE მუშაობს API key-ით (განსხვავებით :commit-ისგან).
+function firestoreDocUrl(collectionName: string, id: string) {
+  return `${FIRESTORE_DOCUMENTS_BASE}/${encodeURIComponent(collectionName)}/${encodeURIComponent(id)}?${FIRESTORE_API_KEY_PARAM}`;
+}
+
+// ერთ დროს პარალელური ჩაწერების ლიმიტი.
+const FIRESTORE_WRITE_CONCURRENCY = 12;
+
+async function runInChunks<T>(items: T[], size: number, worker: (item: T) => Promise<void>) {
+  for (let i = 0; i < items.length; i += size) {
+    await Promise.all(items.slice(i, i + size).map(worker));
+  }
+}
+
+async function firestoreSetDoc(collectionName: string, id: string, row: any) {
+  await firestoreRequest(firestoreDocUrl(collectionName, id), {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fields: toFirestoreFields(row) }),
+  });
+}
+
+async function firestoreDeleteDoc(collectionName: string, id: string) {
+  await firestoreRequest(firestoreDocUrl(collectionName, id), { method: "DELETE" });
 }
 
 function toFirestoreValue(value: any): any {
@@ -165,7 +187,14 @@ async function firestoreRequest(url: string, init?: RequestInit) {
     throw new Error(`Firestore REST ${response.status}: ${text || response.statusText}`);
   }
   if (response.status === 204) return {};
-  return response.json();
+  // DELETE და ზოგი პასუხი ცარიელი სხეულით მოდის — json() არ უნდა ჩავარდეს.
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {};
+  }
 }
 
 function snapshotSynced(name: string, rows: any[]) {
@@ -178,23 +207,8 @@ function snapshotSynced(name: string, rows: any[]) {
 }
 
 async function writeRowsToFirestore(name: string, rows: any[]) {
-  for (let i = 0; i < rows.length; i += FIRESTORE_BATCH_SIZE) {
-    const writes = rows.slice(i, i + FIRESTORE_BATCH_SIZE)
-      .filter((row) => row?.id != null)
-      .map((row) => ({
-        update: {
-          name: firestoreDocumentName(name, String(row.id)),
-          fields: toFirestoreFields(row),
-        },
-      }));
-    if (writes.length) {
-      await firestoreRequest(firestoreCommitUrl(), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ writes }),
-      });
-    }
-  }
+  const valid = rows.filter((row) => row?.id != null);
+  await runInChunks(valid, FIRESTORE_WRITE_CONCURRENCY, (row) => firestoreSetDoc(name, String(row.id), row));
 }
 
 async function seedFirestore(seed: Db) {
@@ -300,23 +314,11 @@ async function persistChanges(db: Db) {
     }
     if (ops.length === 0) { synced[name] = next; continue; }
 
-    for (let i = 0; i < ops.length; i += FIRESTORE_BATCH_SIZE) {
-      const writes = ops.slice(i, i + FIRESTORE_BATCH_SIZE).map((op) => (
-        op.type === "set"
-          ? {
-              update: {
-                name: firestoreDocumentName(name, op.id),
-                fields: toFirestoreFields(op.data),
-              },
-            }
-          : { delete: firestoreDocumentName(name, op.id) }
-      ));
-      await firestoreRequest(firestoreCommitUrl(), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ writes }),
-      });
-    }
+    await runInChunks(ops, FIRESTORE_WRITE_CONCURRENCY, (op) =>
+      op.type === "set"
+        ? firestoreSetDoc(name, op.id, op.data)
+        : firestoreDeleteDoc(name, op.id)
+    );
     synced[name] = next;
   }
 }
